@@ -637,4 +637,91 @@ function get_hdd_options_for_fan($selected=null) {
     return $options;
 }
 
+function fan_group_ids(){
+    global $fancfg;
+    $raw = isset($fancfg['FANGROUPS']) ? trim((string)$fancfg['FANGROUPS']) : '';
+    return ($raw === '') ? [] : array_values(array_filter(array_map('trim', explode(',', $raw))));
+}
+
+function get_fan_channel_options($selected=''){
+    global $fansensors, $board, $board_json, $cmd_count;
+    $selected_map = array_flip(array_filter(explode(',', (string)$selected)));
+    $options = '';
+    $seen = [];
+    foreach($fansensors as $id => $fan){
+        if($fan['Type'] !== 'Fan')
+            continue;
+        $name = normalize_fan_control_name($fan['Name'], $board, count($seen) + 1);
+        if(isset($seen[$name]))
+            continue;
+        $seen[$name] = true;
+        $peers = get_shared_fan_channel_peers($name, $board, $board_json, $cmd_count);
+        $shared = count($peers) > 1 ? ' shared with '.implode(', ', $peers) : ' independent channel';
+        $label = htmlspecialchars($name.' - '.$fan['Name'].' ('.$fan['Reading'].' '.$fan['Units'].')'.$shared);
+        $options .= '<option value="'.htmlspecialchars($name).'"'.(isset($selected_map[$name]) ? ' selected' : '').'>'.$label.'</option>';
+    }
+    return $options;
+}
+
+function get_sensor_group_options($selected=''){
+    global $fansensors;
+    $selected_map = array_flip(array_filter(explode(',', (string)$selected)));
+    $options = '';
+    foreach($fansensors as $id => $sensor){
+        if($sensor['Type'] !== 'Temperature' && $sensor['Name'] !== 'HDD Temperature')
+            continue;
+        $label = htmlspecialchars($sensor['Name']);
+        if(isset($sensor['Reading']))
+            $label .= ' - '.htmlspecialchars((string)$sensor['Reading']);
+        $options .= '<option value="'.htmlspecialchars($id).'"'.(isset($selected_map[(string)$id]) ? ' selected' : '').'>'.$label.'</option>';
+    }
+    return $options;
+}
+
+function fan_group_label($gid){
+    return preg_replace('/[^A-Z0-9_]/', '_', strtoupper((string)$gid));
+}
+
+function get_fan_group_editor(){
+    global $fancfg, $display_unit;
+    $groups = htmlspecialchars(isset($fancfg['FANGROUPS']) ? $fancfg['FANGROUPS'] : '');
+    echo '<div id="fan-group-editor" class="fan-group-editor">';
+    echo '<input type="hidden" id="FANGROUPS" name="FANGROUPS" value="',$groups,'" />';
+    echo '<input type="hidden" id="fan-group-edit-id" value="" />';
+    echo '<input type="hidden" id="fan-group-fans-hidden" data-group-field="FANS" value="" />';
+    echo '<input type="hidden" id="fan-group-sensors-hidden" data-group-field="SENSORS" value="" />';
+    echo '<input type="hidden" id="fan-group-hdds-hidden" data-group-field="HDDINCLUDE" value="" />';
+    echo '<dl><dt>Fan group:</dt><dd><input type="text" id="fan-group-name" placeholder="e.g. FRONT_INTAKE" title="Name for this configured fan group" /></dd></dl>';
+    echo '<dl><dt>Fans in this group:</dt><dd><select multiple id="fan-group-fans" title="Select the fan ports controlled by this rule">',get_fan_channel_options(),'</select></dd></dl>';
+    echo '<dl><dt>Temperature sensors:</dt><dd><select multiple id="fan-group-sensors" title="Select one or more temperature sensors; highest reading controls the group">',get_sensor_group_options(),'</select></dd></dl>';
+    echo '<dl class="fan-group-hdd-row"><dt>Hard drives for this fan group:</dt><dd><select multiple id="fan-group-hdds" title="If HDD Temperature is selected, choose which drives belong to this fan group"><option value="">Select All</option>',get_hdd_options_for_fan(''),'</select></dd></dl>';
+    echo '<dl><dt>High temperature threshold (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temphi" data-group-field="TEMPHI">',get_temp_range('HI',45,$display_unit),'</select></dd></dl>';
+    echo '<dl><dt>Low temperature threshold (&deg;',$display_unit,'):</dt><dd><select id="fan-group-templo" data-group-field="TEMPLO">',get_temp_range('LO',30,$display_unit),'</select></dd></dl>';
+    echo '<dl><dt>Fan speed maximum (%):</dt><dd><select id="fan-group-fanmax" data-group-field="FANMAX">',get_minmax_options('HI',64),'</select></dd></dl>';
+    echo '<dl><dt>Fan speed minimum (%):</dt><dd><select id="fan-group-fanmin" data-group-field="FANMIN">',get_minmax_options('LO',16),'</select></dd></dl>';
+    echo '<dl><dt>HDD Spundown Temperature sensor:</dt><dd><select id="fan-group-temphdd" data-group-field="TEMPHDD"><option value="0">None</option>',get_temp_options(0),'</select></dd></dl>';
+    echo '<dl><dt>High temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temphio" data-group-field="TEMPHIO">',get_temp_range('HI',45,$display_unit),'</select></dd></dl>';
+    echo '<dl><dt>Low temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temploo" data-group-field="TEMPLOO">',get_temp_range('LO',30,$display_unit),'</select></dd></dl>';
+    echo '<dl><dt>Fan speed maximum Spundown (%):</dt><dd><select id="fan-group-fanmaxo" data-group-field="FANMAXO">',get_minmax_options('HI',64),'</select></dd></dl>';
+    echo '<dl><dt>Fan speed minimum Spundown (%):</dt><dd><select id="fan-group-fanmino" data-group-field="FANMINO">',get_minmax_options('LO',16),'</select></dd></dl>';
+    echo '<dl><dt>&nbsp;</dt><dd><input id="fan-group-save" type="submit" value="Add / Update Fan Group"><input id="fan-group-clear" type="button" value="Clear Editor"></dd></dl>';
+    echo '</div>';
+}
+
+function get_configured_fan_group_table(){
+    global $fancfg;
+    echo '<div id="configured-fan-groups"><h3>Configured fan groups</h3>';
+    echo '<table class="tablesorter fan-group-table"><thead><tr><th>Group</th><th>Fans</th><th>Sensors</th><th>Hard drives</th><th>Actions</th></tr></thead><tbody>';
+    foreach(fan_group_ids() as $gid){
+        $safe = htmlspecialchars($gid);
+        $fans = isset($fancfg['FANS_'.$gid]) ? $fancfg['FANS_'.$gid] : '';
+        $sensors = isset($fancfg['SENSORS_'.$gid]) ? $fancfg['SENSORS_'.$gid] : '';
+        $hdds = isset($fancfg['HDDINCLUDE_'.$gid]) ? $fancfg['HDDINCLUDE_'.$gid] : '';
+        echo '<tr class="fan-group-row" data-group="',$safe,'" data-fans="',htmlspecialchars($fans),'" data-sensors="',htmlspecialchars($sensors),'" data-hdds="',htmlspecialchars($hdds),'">';
+        echo '<td>',$safe,'</td><td>',htmlspecialchars($fans),'</td><td>',htmlspecialchars($sensors),'</td><td>',($hdds === '' ? 'All / global' : htmlspecialchars($hdds)),'</td>';
+        echo '<td><input type="button" value="Edit" onclick="editFanGroup(\'',$safe,'\')"><input type="button" value="Remove" onclick="removeFanGroup(\'',$safe,'\')"></td></tr>';
+    }
+    echo '</tbody></table></div>';
+}
+
 ?>

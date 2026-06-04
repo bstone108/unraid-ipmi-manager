@@ -162,7 +162,8 @@ Cond="exec(\"grep -o '^OVERRIDE=.enable' /boot/config/plugins/ipmi/ipmi.cfg 2>/d
 
 <?if ((($netsvc == 'disable') || (($netsvc == 'enable') && ($fanip != 'None')))):?>
 
-    <?get_fanctrl_options();?>
+    <?get_fan_group_editor();?>
+    <?get_configured_fan_group_table();?>
 
 <?endif;?>
 </div>
@@ -220,12 +221,18 @@ $(function(){
 
     initDriveDropdown(false);
     initFanDriveDropdowns(false);
+    initFanGroupDropdowns(false);
+    $('form[name="fanctrl_options"]').on('submit', prepareFanGroupSubmit);
+    $('#fan-group-clear').on('click', clearFanGroupEditor);
+    $('#fan-group-sensors').on('change', syncFanGroupHddVisibility);
+    syncFanGroupHddVisibility();
 
     // check if board supports ipmi
     $('#tab2').click(function() {
         checkBoard();
         initDriveDropdown(true);
         initFanDriveDropdowns(true);
+        initFanGroupDropdowns(true);
     });
 
     if($.cookie('one') == 'tab2')
@@ -358,6 +365,95 @@ function initFanDriveDropdowns(remove) {
         }
         DDCheckList(this, hiddenSelector);
     });
+}
+
+function initFanGroupDropdowns(remove) {
+    ['#fan-group-fans', '#fan-group-sensors', '#fan-group-hdds'].forEach(function(selector) {
+        if ($(selector).length === 0) return;
+        if (remove) {
+            $(selector).dropdownchecklist('destroy');
+        }
+        DDCheckList(selector, null);
+    });
+}
+
+function fanGroupArray(selector) {
+    var val = $(selector).val() || [];
+    if (!$.isArray(val)) val = [val];
+    return $.grep(val, function(item) { return item !== ''; });
+}
+
+function normalizeFanGroupId(name) {
+    return String(name || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function currentFanGroups() {
+    var raw = $('#FANGROUPS').val() || '';
+    return $.grep($.map(raw.split(','), function(item) { return $.trim(item); }), function(item) { return item !== ''; });
+}
+
+function setFanGroups(groups) {
+    var seen = {};
+    var clean = [];
+    $.each(groups, function(_, group) {
+        group = normalizeFanGroupId(group);
+        if (group && !seen[group]) {
+            seen[group] = true;
+            clean.push(group);
+        }
+    });
+    $('#FANGROUPS').val(clean.join(','));
+}
+
+function syncFanGroupHddVisibility() {
+    $('.fan-group-hdd-row').toggle($.inArray('99', fanGroupArray('#fan-group-sensors')) >= 0);
+}
+
+function clearFanGroupEditor() {
+    $('#fan-group-edit-id').val('');
+    $('#fan-group-name').val('');
+    $('#fan-group-fans, #fan-group-sensors, #fan-group-hdds').val([]).trigger('change');
+    syncFanGroupHddVisibility();
+}
+
+function editFanGroup(groupId) {
+    var row = $('.fan-group-row[data-group="' + groupId + '"]');
+    $('#fan-group-edit-id').val(groupId);
+    $('#fan-group-name').val(groupId);
+    $('#fan-group-fans').val((row.data('fans') || '').split(',')).trigger('change');
+    $('#fan-group-sensors').val((row.data('sensors') || '').split(',')).trigger('change');
+    $('#fan-group-hdds').val((row.data('hdds') || '').split(',')).trigger('change');
+    syncFanGroupHddVisibility();
+}
+
+function removeFanGroup(groupId) {
+    setFanGroups($.grep(currentFanGroups(), function(group) { return group !== groupId; }));
+    $('form[name="fanctrl_options"]').submit();
+}
+
+function prepareFanGroupSubmit() {
+    var fans = fanGroupArray('#fan-group-fans');
+    var sensors = fanGroupArray('#fan-group-sensors');
+    var hasEditorSelection = fans.length || sensors.length || ($('#fan-group-name').val() || $('#fan-group-edit-id').val());
+    if (!hasEditorSelection) return true;
+
+    var groupId = normalizeFanGroupId($('#fan-group-edit-id').val() || $('#fan-group-name').val());
+    if (!groupId) {
+        groupId = 'GROUP_' + (currentFanGroups().length + 1);
+    }
+    $('#fan-group-edit-id').val(groupId);
+    $('#fan-group-name').val(groupId);
+    setFanGroups(currentFanGroups().concat([groupId]));
+
+    $('#fan-group-fans-hidden').attr('name', 'FANS_' + groupId).val(fans.join(','));
+    $('#fan-group-sensors-hidden').attr('name', 'SENSORS_' + groupId).val(sensors.join(','));
+    $('#fan-group-hdds-hidden').attr('name', 'HDDINCLUDE_' + groupId).val(fanGroupArray('#fan-group-hdds').join(','));
+    $('[data-group-field]').each(function() {
+        var field = $(this).data('group-field');
+        if (field === 'FANS' || field === 'SENSORS' || field === 'HDDINCLUDE') return;
+        $(this).attr('name', field + '_' + groupId);
+    });
+    return true;
 }
 
 function sortFanBlocks() {

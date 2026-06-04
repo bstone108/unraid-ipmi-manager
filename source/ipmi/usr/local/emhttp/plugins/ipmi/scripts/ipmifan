@@ -488,6 +488,126 @@ function ipmi_fan_sensors() {
     unset($sensors);
 }
 
+function configured_fan_groups($board0, $fans){
+    global $fancfg;
+
+    $groups = [];
+    $configured_fan_groups = isset($fancfg['FANGROUPS']) ? array_filter(array_map('trim', explode(',', $fancfg['FANGROUPS']))) : [];
+    foreach($configured_fan_groups as $group){
+        $targets = [];
+        $selected = isset($fancfg["FANS_$group"]) ? array_filter(array_map('trim', explode(',', $fancfg["FANS_$group"]))) : [];
+        foreach($selected as $fan){
+            if(isset($fans[$fan]))
+                $targets[$fan] = $fans[$fan];
+        }
+        $sensors_selected = isset($fancfg["SENSORS_$group"]) ? array_filter(array_map('trim', explode(',', $fancfg["SENSORS_$group"]))) : [];
+        if(!empty($targets) && !empty($sensors_selected))
+            $groups[] = ['name' => $group, 'targets' => collapse_selected_fans_by_target($board0, $targets), 'sensors' => $sensors_selected];
+    }
+
+    if(!empty($groups))
+        return $groups;
+
+    foreach($fans as $fan => $value){
+        $fan_enabled = !isset($fancfg["FANENABLE_$fan"]) || strval($fancfg["FANENABLE_$fan"]) !== '0';
+        if($fan_enabled && isset($fancfg["TEMP_$fan"]) && $fancfg["TEMP_$fan"] !== '')
+            $groups[] = ['name' => $fan, 'targets' => [$fan => $value], 'sensors' => [$fancfg["TEMP_$fan"]]];
+    }
+    return $groups;
+}
+
+function collapse_selected_fans_by_target($board0, $targets){
+    $by_target = [];
+    foreach($targets as $fan => $value){
+        $key = $board0.':'.$value;
+        if(!isset($by_target[$key]))
+            $by_target[$key] = [];
+        $by_target[$key][$fan] = $value;
+    }
+
+    $collapsed = [];
+    foreach($by_target as $key => $target_fans){
+        if(count($target_fans) > 1)
+            fanlog('Detected duplicate raw target / shared channel for selected fan group: '.implode(',', array_keys($target_fans)).' -> '.$key);
+        foreach($target_fans as $fan => $value)
+            $collapsed[$fan] = $value;
+    }
+    return $collapsed;
+}
+
+function group_sensor_reading($group, &$sensors){
+    $highest = -1;
+    $highest_sensor = null;
+    foreach($group['sensors'] as $temp){
+        if(!isset($sensors[$temp]))
+            continue;
+        $reading = floatval($sensors[$temp]['Reading']);
+        if ($temp == "99") {
+            $reading = floatval(get_highest_temp_for_fan($group['name']));
+            $sensors['99']['Reading'] = $reading;
+        }
+        if($reading > $highest){
+            $highest = $reading;
+            $highest_sensor = $temp;
+        }
+    }
+    return [$highest_sensor, max(0, $highest)];
+}
+
+function group_pwm($group, &$sensors){
+    global $fancfg, $range;
+
+    list($temp, $reading) = group_sensor_reading($group, $sensors);
+    if($temp === null)
+        return ['pwm' => '00', 'pct' => 0, 'name' => 'No sensor', 'reading' => 0];
+
+    $templo  = isset($fancfg["TEMPLO_{$group['name']}"]) ? intval($fancfg["TEMPLO_{$group['name']}"]) : 30;
+    $temphi  = isset($fancfg["TEMPHI_{$group['name']}"]) ? intval($fancfg["TEMPHI_{$group['name']}"]) : 45;
+    $fanmin  = isset($fancfg["FANMIN_{$group['name']}"]) ? intval($fancfg["FANMIN_{$group['name']}"]) : 16;
+    $fanmax  = isset($fancfg["FANMAX_{$group['name']}"]) ? intval($fancfg["FANMAX_{$group['name']}"]) : $range;
+    $temploo = isset($fancfg["TEMPLOO_{$group['name']}"]) ? intval($fancfg["TEMPLOO_{$group['name']}"]) : 30;
+    $temphio = isset($fancfg["TEMPHIO_{$group['name']}"]) ? intval($fancfg["TEMPHIO_{$group['name']}"]) : 45;
+    $fanmino = isset($fancfg["FANMINO_{$group['name']}"]) ? intval($fancfg["FANMINO_{$group['name']}"]) : 16;
+    $fanmaxo = isset($fancfg["FANMAXO_{$group['name']}"]) ? intval($fancfg["FANMAXO_{$group['name']}"]) : $range;
+    $name = htmlspecialchars($sensors[$temp]['Name']);
+    $use_override = false;
+
+    if($temp == "99" && $reading <= 0 && isset($fancfg["TEMPHDD_{$group['name']}"]) && $fancfg["TEMPHDD_{$group['name']}"] != 0){
+        $temp = $fancfg["TEMPHDD_{$group['name']}"];
+        $reading = floatval($sensors[$temp]['Reading']);
+        $name = "HDD Spundown using ".htmlspecialchars($sensors[$temp]['Name']);
+        $use_override = true;
+    }
+
+    $lo = $use_override ? $temploo : $templo;
+    $hi = $use_override ? $temphio : $temphi;
+    $min = $use_override ? $fanmino : $fanmin;
+    $max = $use_override ? $fanmaxo : $fanmax;
+
+    if($reading <= $lo){
+        $pct = 0;
+        $pwm = 1;
+    }elseif($reading >= $hi){
+        $pct = 1;
+        $pwm = $range;
+    }else{
+        $pct = ($reading-$lo)/($hi-$lo)*($max-$min)/$range + $min/$range;
+        $pwm = round(($pct)*($range/4))*4;
+    }
+    if($pwm <= $min){
+        $pwm = $min;
+        $pct = $min/$range;
+    }
+    if($pwm >= $max){
+        $pwm = $max;
+        $pct = $max/$range;
+    }
+    if($range == 255)
+        $pwm = dechex($pwm);
+    $pwm = str_pad($pwm, 2, '0', STR_PAD_LEFT);
+    return ['pwm' => $pwm, 'pct' => $pct, 'name' => $name, 'reading' => $reading];
+}
+
 ##############################
 #####  PROGRAM SECTION  ######
 ##############################
@@ -552,166 +672,71 @@ while(TRUE){ while(TRUE){
         $max_pwm_by_target = [];
        # var_dump($fans,$raw) ;
 
-        foreach($fans as $fan => $value){
+        foreach(configured_fan_groups($board0, $fans) as $group){
+            $group_result = group_pwm($group, $sensors);
+            $pwm = $group_result['pwm'];
+            $pct = $group_result['pct'];
+            $reading = $group_result['reading'];
+            $name = $group_result['name'];
+            $pct_label = str_pad(round($pct*100), 2, ' ', STR_PAD_LEFT);
+            if ($reading <= 0) $mytemp = "Spundown" ; else $mytemp = str_replace([" ","&#8201;&#176;"],["",""],my_temp($reading));
+            $msg .= ", {$group['name']}({$pct_label}%):".str_replace('Temperature','Temp',$name)."($mytemp)";
 
-            $fan_enabled = !isset($fancfg["FANENABLE_$fan"]) || strval($fancfg["FANENABLE_$fan"]) !== '0';
-            $temp = ($fan_enabled && isset($fancfg["TEMP_$fan"])) ? $fancfg["TEMP_$fan"] : '';
-         #   echo "temp:".$temp;
-            if(!empty($temp)) {
-                $templo  = (isset($fancfg["TEMPLO_$fan"])) ? intval($fancfg["TEMPLO_$fan"])  : 30;
-                $temphi  = (isset($fancfg["TEMPHI_$fan"])) ? intval($fancfg["TEMPHI_$fan"])  : 45;
-                $fanmin  = (isset($fancfg["FANMIN_$fan"])) ? intval($fancfg["FANMIN_$fan"])  : 16;
-                $fanmax  = (isset($fancfg["FANMAX_$fan"])) ? intval($fancfg["FANMAX_$fan"])  : $range;
-                $temploo  = (isset($fancfg["TEMPLOO_$fan"])) ? intval($fancfg["TEMPLOO_$fan"])  : 30;
-                $temphio  = (isset($fancfg["TEMPHIO_$fan"])) ? intval($fancfg["TEMPHIO_$fan"])  : 45;
-                $fanmino  = (isset($fancfg["FANMINO_$fan"])) ? intval($fancfg["FANMINO_$fan"])  : 16;
-                $fanmaxo  = (isset($fancfg["FANMAXO_$fan"])) ? intval($fancfg["FANMAXO_$fan"])  : $range;
-                $reading = floatval($sensors[$temp]['Reading']);
-                if ($temp == "99") {
-                    $reading = floatval(get_highest_temp_for_fan($fan));
-                    $sensors['99']['Reading'] = $reading;
-                }
-                $name    = htmlspecialchars($sensors[$temp]['Name']);
-                $use_override = false;
-                if ($temp == "99" && $reading <= 0) {
-                    if (isset($fancfg["TEMPHDD_$fan"]) &&  $fancfg["TEMPHDD_$fan"] != 0) {
-                    $temp=    $fancfg["TEMPHDD_$fan"] ;
-                    $reading = floatval($sensors[$temp]['Reading']);
-                    $name    = "HDD Spundown using ".htmlspecialchars($sensors[$temp]['Name']);
-                    $use_override = true;
-                    }  
-                }
-                if ($use_override) {
-                    if ($reading <= $temploo){
-                        $pct = 0;
-                        $pwm = 1;
-                    }elseif ($reading >= $temphio){
-                        $pct = 1;
-                        $pwm = $range;
-                    }else{
-                        $pct = ($reading-$temploo)/($temphio-$temploo)*($fanmaxo-$fanmino)/$range + $fanmino/$range;
-                        $pwm = round(($pct)*($range/4))*4; //round
-                    }
-                    //impose fan lower limit
-                    if ($pwm <= $fanmino){
-                        $pwm  = $fanmino;
-                        $pct  = $fanmino/$range;
-                    }
-
-                    //impose fan upper limit
-                    if ($pwm >= $fanmaxo){
-                        $pwm  = $fanmaxo;
-                        $pct  = $fanmaxo/$range;
-                    }
-                } else {
-                    if ($reading <= $templo){
-                        $pct = 0;
-                        $pwm = 1;
-                    }elseif ($reading >= $temphi){
-                        $pct = 1;
-                        $pwm = $range;
-                    }else{
-                        $pct = ($reading-$templo)/($temphi-$templo)*($fanmax-$fanmin)/$range + $fanmin/$range;
-                        $pwm = round(($pct)*($range/4))*4; //round
-                    }
-                    //impose fan lower limit
-                    if ($pwm <= $fanmin){
-                        $pwm  = $fanmin;
-                        $pct  = $fanmin/$range;
-                    }
-
-                    //impose fan upper limit
-                    if ($pwm >= $fanmax){
-                        $pwm  = $fanmax;
-                        $pct  = $fanmax/$range;
-                    }
-                }
-                //convert pwm to hexadecimal
-                if($range == 255){
-                    $pwm = dechex($pwm);
-                }
-
-                //pad pwm to 2 places
-                $pwm = str_pad($pwm, 2, '0', STR_PAD_LEFT);
-
-                //add fan, value, temp sensor name and reading
-                $pct  = str_pad(round($pct*100), 2, ' ', STR_PAD_LEFT);
-                if ($reading <= 0) $mytemp = "Spundown" ; else $mytemp = str_replace([" ","&#8201;&#176;"],["",""],my_temp($reading));
-                $msg .= ", {$fan}({$pct}%):".str_replace('Temperature','Temp',$name)."($mytemp)";
-
-         }else{
-             if (!$fan_enabled) {
-                $msg .= ", {$fan}(Disabled)";
-             }
-                $pwm ='00';
-           }
-
-           switch($board) {
-            case "ASRock":
-            case "ASRockRack":
-                switch($board_model) {
-                    case 'EP2C612 WS':
-                        $hex .= " $pwm";
-                        break;
-                    default:
-                        //add value to hex for Asrock boards
-                        if($cmd_count !== 0 && $fan_count == 0){
-                            // set value for CPU fans for dual sockets
-                            if($pwm == '00'){
-                                $hex .= ' 00 00';
-                            }else{
-                                $hex .= " 01 $pwm";
-                            }
-
-                        }else{
+            foreach($group['targets'] as $target_fan => $value){
+                switch($board) {
+                case "ASRock":
+                case "ASRockRack":
+                    switch($board_model) {
+                        case 'EP2C612 WS':
                             $hex .= " $pwm";
-                        }
-                        break;
+                            break;
+                        default:
+                            if($cmd_count !== 0 && $fan_count == 0){
+                                if($pwm == '00'){
+                                    $hex .= ' 00 00';
+                                }else{
+                                    $hex .= " 01 $pwm";
+                                }
+                            }else{
+                                $hex .= " $pwm";
+                            }
+                            break;
+                    }
+                    break;
+                case "Supermicro":
+                    $target_key = $board0.':'.$value;
+                    $pwm_numeric = ($range == 255) ? hexdec($pwm) : intval($pwm);
+                    if(!isset($max_pwm_by_target[$target_key]))
+                        $max_pwm_by_target[$target_key] = $pwm_numeric;
+                    else
+                        $max_pwm_by_target[$target_key] = max($max_pwm_by_target[$target_key], $pwm_numeric);
+                    if(!isset($pending_pwm_by_target[$target_key]) || $pwm_numeric >= $max_pwm_by_target[$target_key]){
+                        $pending_pwm_by_target[$target_key] = [
+                            'value' => $value,
+                            'pwm' => $pwm,
+                        ];
+                    }
+                    break;
+                case "Dell":
+                    if(($value == '00' || $value == '10') && $current_pwm !== $pwm && $pwm !== '00'){
+                        $cmd = "ipmi-raw $raw $pwm $fanopts 2>&1; ";
+                        $current_pwm  = $pwm;
+                        $exec = true;
+                    }
+                    break;
+                case "Giga":
+                    $giga_key = $board0.':'.$value;
+                    if(!isset($current_pwm_giga[$giga_key]))
+                        $current_pwm_giga[$giga_key] = '';
+                    if($current_pwm_giga[$giga_key] !== $pwm && $pwm !== '00'){
+                        $cmd .= "ipmi-raw $raw $pwm $value $fanopts 2>&1; ";
+                        $current_pwm_giga[$giga_key] = $pwm;
+                        $exec = true;
+                    }
+                    break;
                 }
-                break;
-            case "Supermicro":
-                // Several user-visible fan rules can share the same BMC PWM channel
-                // (for example Supermicro FAN1-FAN4 or FANA/FANB). Keep the rules
-                // independent in the UI, then send the highest requested PWM per
-                // raw BMC target so a cooler rule cannot slow a hotter neighbor.
-                $target_key = $board0.':'.$value;
-                $pwm_numeric = ($range == 255) ? hexdec($pwm) : intval($pwm);
-                if(!isset($max_pwm_by_target[$target_key]))
-                    $max_pwm_by_target[$target_key] = $pwm_numeric;
-                else
-                    $max_pwm_by_target[$target_key] = max($max_pwm_by_target[$target_key], $pwm_numeric);
-                if(!isset($pending_pwm_by_target[$target_key]) || $pwm_numeric >= $max_pwm_by_target[$target_key]){
-                    $pending_pwm_by_target[$target_key] = [
-                        'value' => $value,
-                        'pwm' => $pwm,
-                    ];
-                }
-                break;
-            case "Dell":
-               # echo $pwm;
-               # $pwm = "05" ;
-                #fanlog($msg);
-                if(($value == '00' || $value == '10') && $current_pwm !== $pwm && $pwm !== '00'){
-                    $cmd = "ipmi-raw $raw $pwm $fanopts 2>&1; ";
-                    $current_pwm  = $pwm;
-                    
-                    $exec = true;
-                }
-                break;
-            case "Giga":
-                // each Giga fan is controlled independently and command sets manual mode inline
-                $giga_key = $board0.':'.$value;
-                if(!isset($current_pwm_giga[$giga_key]))
-                    $current_pwm_giga[$giga_key] = '';
-
-                if($current_pwm_giga[$giga_key] !== $pwm && $pwm !== '00'){
-                    $cmd .= "ipmi-raw $raw $pwm $value $fanopts 2>&1; ";
-                    $current_pwm_giga[$giga_key] = $pwm;
-                    $exec = true;
-                }
-                break;
+                $fan_count++;
             }
-            $fan_count++;
         }
         if($board === 'Supermicro'){
             foreach($pending_pwm_by_target as $target_key => $target_pwm){
