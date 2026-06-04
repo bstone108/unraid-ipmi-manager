@@ -12,6 +12,49 @@ $hddignore  = isset($fancfg['HDDIGNORE'])  ? htmlspecialchars($fancfg['HDDIGNORE
 $harddrives = isset($fancfg['HARDDRIVES']) ? htmlspecialchars($fancfg['HARDDRIVES']) : 'enable';
 $range      = 64;
 
+/* Collapse fan-control entries when the board map proves they share one BMC PWM target. */
+function ipmi_shared_fan_group_name($fan_names){
+    $fan_names = array_values($fan_names);
+    if(count($fan_names) <= 1)
+        return $fan_names[0];
+
+    $numbers = [];
+    $letters = [];
+    foreach($fan_names as $fan_name){
+        if(preg_match('/^FAN([0-9])$/', $fan_name, $m)){
+            $numbers[] = $m[1];
+            continue;
+        }
+        if(preg_match('/^FAN([A-Z])$/', $fan_name, $m)){
+            $letters[] = $m[1];
+            continue;
+        }
+        return preg_replace('/[^A-Z0-9_]/', '_', implode('_', $fan_names));
+    }
+
+    if(count($numbers) === count($fan_names))
+        return 'FAN'.implode('', $numbers);
+    if(count($letters) === count($fan_names))
+        return 'FAN'.implode('', $letters);
+
+    return preg_replace('/[^A-Z0-9_]/', '_', implode('_', $fan_names));
+}
+
+function ipmi_group_shared_fan_channels($fans){
+    $by_target = [];
+    foreach($fans as $fan_name => $target){
+        if(!isset($by_target[$target]))
+            $by_target[$target] = [];
+        $by_target[$target][] = $fan_name;
+    }
+
+    $grouped = [];
+    foreach($by_target as $target => $fan_names)
+        $grouped[ipmi_shared_fan_group_name($fan_names)] = $target;
+
+    return $grouped;
+}
+
 $fanip   = (isset($fancfg['FANIP']) && ($netsvc === 'enable')) ? htmlspecialchars($fancfg['FANIP']) : htmlspecialchars($ipaddr) ;
 
 /* board info */
@@ -89,6 +132,8 @@ switch($board) {
         ];
         break;
     }
+
+    $board_json['Supermicro']['fans'] = ipmi_group_shared_fan_channels($board_json['Supermicro']['fans']);
   
     break;
   case 'Dell':

@@ -11,26 +11,34 @@ def read(path: Path) -> str:
     return path.read_text(errors="replace")
 
 
-def test_supermicro_default_targets_are_split_and_include_fan_b():
+def test_supermicro_default_targets_are_detected_then_grouped_when_shared():
     text = read(SETTINGS_FAN)
     supermicro_section = text.split("case  'Supermicro':", 1)[1].split("case 'Dell':", 1)[0]
-    assert "'FAN1234'" not in supermicro_section
     for fan in ["FAN1", "FAN2", "FAN3", "FAN4", "FANA", "FANB"]:
-        assert f"'{fan}'" in text
-    assert "'FAN1' => '00'" in text
-    assert "'FAN4' => '00'" in text
-    assert "'FANA' => '01'" in text
-    assert "'FANB' => '01'" in text
+        assert f"'{fan}'" in supermicro_section
+    assert "ipmi_group_shared_fan_channels" in text
+    assert "'FAN1234' => '00'" not in supermicro_section
+    assert "'FANAB' => '01'" not in supermicro_section
+    assert "$board_json['Supermicro']['fans'] = ipmi_group_shared_fan_channels" in supermicro_section
 
 
-def test_fan_ui_keeps_autodetected_fans_individual_and_allows_per_fan_drive_selection():
+def test_package_description_does_not_advertise_old_github_link():
+    slack_desc = read(ROOT / "source/ipmi/install/slack-desc")
+    assert "https://github.com/dmacias72/unRAID-plugins" not in slack_desc
+    assert "IPMI unRAID Plugin" in slack_desc
+    assert "allows you to view your system sensors" in slack_desc
+
+
+def test_fan_ui_groups_autodetected_fans_when_bmc_targets_are_shared_and_allows_per_group_drive_selection():
     helpers = read(HELPERS)
     assert "normalize_fan_control_name" in helpers
+    assert "resolve_shared_fan_control_name" in helpers
+    assert "shared_control_seen" in helpers
+    assert "Shared BMC channel" in helpers
     assert "fanctrl-drive-select" in helpers
     assert "fanctrl-drive-hidden" in helpers
     assert "HDDINCLUDE_" in helpers
     assert "get_hdd_options_for_fan" in helpers
-    assert "FAN1234'" not in helpers
 
 
 def test_fan_page_initializes_per_fan_drive_dropdowns():

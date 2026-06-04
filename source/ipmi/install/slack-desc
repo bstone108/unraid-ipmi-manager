@@ -12,7 +12,7 @@ ipmi: The ipmi plugin allows you to view your system sensors and
 ipmi: events using your ipmi hardware. Allows for local or remote 
 ipmi: access and event notification.
 ipmi: 
-ipmi: https://github.com/dmacias72/unRAID-plugins
+ipmi: 
 ipmi: 
 ipmi: 
 ipmi: 
