@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ipmi">
 <!ENTITY author    "SimonFair">
-<!ENTITY version   "2026.06.03.t02">
+<!ENTITY version   "2026.06.03.03">
 <!ENTITY launch    "Settings/IPMI">
 <!ENTITY gitURL    "https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/main">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
@@ -17,6 +17,8 @@
 
 <CHANGES>
 ##&name;
+###2026.06.03.03
+- Main branch release build using numeric main-version suffix without testing `t` marker.
 ###2026.06.03.t02
 - Main-only rebuild after retiring the testing branch so Unraid sees a fresh main update.
 ###2026.06.03.t01

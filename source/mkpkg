@@ -19,7 +19,7 @@ MD5=""
 
 mkdir -p "${ARCHIVE}"
 for build in $(seq 1 99); do
-    candidate=$(printf "%s.t%02d" "${BASE_VERSION}" "${build}")
+    candidate=$(printf "%s.%02d" "${BASE_VERSION}" "${build}")
     PKG="${ARCHIVE}/${PLUGIN}-${candidate}${ARCH}.txz"
     if [[ ! -f $PKG ]]; then
         VERSION="${candidate}"
@@ -30,7 +30,7 @@ for build in $(seq 1 99); do
 done
 
 if [[ -z "${VERSION}" ]]; then
-    echo "No available ${BASE_VERSION}.tNN version slot found" >&2
+    echo "No available ${BASE_VERSION}.NN version slot found" >&2
     exit 1
 fi
 
