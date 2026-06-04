@@ -294,60 +294,42 @@ function ipmi_fan_sensors($ignore=null) {
     unset($sensors);
 }
 
+/* Normalize a BMC fan sensor name into a stable fan-control config key. */
+function normalize_fan_control_name($raw_name, $board, $index=1){
+    $name = strtoupper(trim(str_replace(' ', '_', $raw_name)));
+
+    if($board === 'Supermicro'){
+        if(preg_match('/CPU_FAN([1-4])$/', $name, $m))
+            return 'FAN'.$m[1];
+        if(preg_match('/^FAN([1-4]|A|B)$/', $name, $m))
+            return 'FAN'.$m[1];
+        if(preg_match('/SYS_FAN([1-9])$/', $name, $m))
+            return intval($m[1]) === 1 ? 'FANA' : 'FANB';
+    }
+
+    return preg_replace('/[^A-Z0-9_]/', '_', $name ?: ('FAN'.$index));
+}
+
 /* get all fan options for fan control */
 function get_fanctrl_options(){
     global $fansensors, $fancfg, $board, $board_json, $board_file_status, $board_status, $cmd_count, $range, $display_unit;
     if($board_status) {
         $i = 0;
-        $fan1234 = 0;
-        $sysfan = 0;
-        $cpufan = 0;
+        $seen_fans = [];
         foreach($fansensors as $id => $fan){
-            if($i > 11) break;
+            if($i > 23) break;
             if ($fan['Type'] === 'Fan'){
-                $name    = htmlspecialchars($fan['Name']);
-                $display = $name;
-                if($board === 'Supermicro'){
-                    $syscpu = false;
-                    if(strpos ($name, 'SYS_FAN') !== false){
-                        $syscpu = true;
-                        $i++;
-                        if($sysfan == 0){
-                            $name = 'FANA';
-                            $display = 'SYS_FAN';
-                            $sysfan++;
-                        }else{
-                            continue;
-                        }
-                    }elseif(strpos ($name, 'CPU_FAN') !== false){
-                        $syscpu = true;
-                        $i++;
-                        if($cpufan == 0){
-                            $name = 'FAN1234';
-                            $display = 'CPU_FAN';
-                            $cpufan++;
-                        }else{
-                            continue;
-                        }
-                    }elseif($name !== 'FANA' && !$syscpu) {
-                        #$i++;
-                        if($fan1234 == 0){
-                            $name = 'FAN1234';
-                            $display = 'FAN1234';
-                            $fan1234++;
-                        }else{
-                            continue;
-                        }
-                    }
-                }
+                $display = htmlspecialchars($fan['Name']);
+                $name = normalize_fan_control_name($fan['Name'], $board, $i + 1);
+                if(isset($seen_fans[$name]))
+                    $name .= '_'.$id;
+                $seen_fans[$name] = true;
                 if($board ==='Dell'){
-                    $i++;
-                    if($fan1234 == 0){
                     $name = 'FAN123456';
                     $display = 'FAN123456';
-                    $fan1234++;}                        
-                    else{
-                        continue;}
+                    if(isset($seen_fans['DELL_GROUP_DONE']))
+                        continue;
+                    $seen_fans['DELL_GROUP_DONE'] = true;
                 }
                 $tempid  = 'TEMP_'.$name;
                 $temphdd  = 'TEMPHDD_'.$name;
@@ -439,6 +421,17 @@ function get_fanctrl_options(){
                 '<option value="0">Auto</option>',
                 get_temp_options($fancfg[$tempid]),
                 '</select></dd></dl>';
+
+                // per-fan hard drive sensor pool used when the primary sensor is HDD Temperature
+                $hddinclude = 'HDDINCLUDE_'.$name;
+                echo '<dl class="fanctrl-settings ',$fanconfigclass,'"',$fanhide,'>',
+                '<dt>Hard drives for this fan:</dt><dd>',
+                '<select multiple class="fanctrl-drive-select" data-hidden="#',$hddinclude,'" title="Select drives whose temperatures should control this fan">',
+                '<option value="">Select All</option>',
+                get_hdd_options_for_fan(isset($fancfg[$hddinclude]) ? $fancfg[$hddinclude] : ''),
+                '</select>',
+                '<input type="hidden" id="',$hddinclude,'" class="fanctrl-drive-hidden" name="',$hddinclude,'" value="',htmlspecialchars(isset($fancfg[$hddinclude]) ? $fancfg[$hddinclude] : ''),'" />',
+                '</dd></dl>';
                 
                 if ($fancfg[$tempid] == "99") $disabled = "" ; else $disabled = " disabled ";
 
@@ -600,6 +593,20 @@ function get_hdd_options($ignore=null) {
 
         $options .= ">$serial ($hdd)</option>";
 
+    }
+    return $options;
+}
+
+function get_hdd_options_for_fan($selected=null) {
+    $hdds = get_all_hdds();
+    $selected = trim((string)$selected);
+    $selected_drives = ($selected === '') ? [] : array_flip(array_filter(explode(',', $selected)));
+    $options = "";
+    foreach ($hdds as $serial => $hdd) {
+        $options .= "<option value='$serial'";
+        if ($selected === '' || array_key_exists($serial, $selected_drives))
+            $options .= " selected";
+        $options .= ">$serial ($hdd)</option>";
     }
     return $options;
 }

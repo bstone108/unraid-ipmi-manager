@@ -413,6 +413,44 @@ function get_highest_temp(){
     return $highest_temp;
 }
 
+/* get highest temp of the hard drives assigned to a fan rule */
+function get_highest_temp_for_fan($fan){
+    global $fancfg, $hddignore;
+
+    $include_key = "HDDINCLUDE_$fan";
+    $include = isset($fancfg[$include_key]) ? trim((string)$fancfg[$include_key]) : '';
+    if ($include === '')
+        return get_highest_temp();
+
+    $selected = array_flip(array_filter(explode(',', $include)));
+    $ignore = array_flip(explode(',', $hddignore));
+    $ua_json = '/var/state/unassigned.devices/hdd_temp.json';
+    $ua_devs = file_exists($ua_json) ? json_decode(file_get_contents($ua_json), true) : [];
+    $disksini = parse_ini_file('/var/local/emhttp/disks.ini',true);
+    $devsini = parse_ini_file('/var/local/emhttp/devs.ini',true);
+    if ($devsini) $hdds = array_merge($disksini, $devsini); else $hdds = $disksini ;
+    unset($hdds['flash']);
+
+    $highest_temp = 0;
+    foreach ($hdds as $hdd) {
+        if (!isset($hdd['id']) || !array_key_exists($hdd['id'], $selected) || array_key_exists($hdd['id'], $ignore))
+            continue;
+
+        $temp = 0;
+        if(array_key_exists('temp', $hdd))
+            $temp = $hdd['temp'];
+        elseif(!empty($ua_devs)){
+            $ua_key = "/dev/".$hdd['device'];
+            $temp = (array_key_exists($ua_key, $ua_devs)) ? $ua_devs[$ua_key]['temp'] : 0;
+        }
+
+        if(is_numeric($temp))
+            $highest_temp = ($temp > $highest_temp) ? $temp : $highest_temp;
+    }
+    debug("Highest temp for {$fan} is {$highest_temp}ºC");
+    return $highest_temp;
+}
+
 /* get fan and temp sensors */
 function ipmi_fan_sensors() {
     global $ipmi, $fanopts, $hdd_temp;
@@ -463,6 +501,7 @@ $hdd_count    = $hddpoll * 10;
 $curent_hex   = '';
 $current_hex2 = '';
 $current_pwm_giga = [];
+$current_pwm_by_target = [];
 
 fanlog('Starting Fan Control');
 fanlog("Board: $board Board Model: $board_model");
@@ -509,6 +548,8 @@ while(TRUE){ while(TRUE){
         $cmd    = '';
         $exec   = false;
         $fan_count  = 0;
+        $pending_pwm_by_target = [];
+        $max_pwm_by_target = [];
        # var_dump($fans,$raw) ;
 
         foreach($fans as $fan => $value){
@@ -526,6 +567,10 @@ while(TRUE){ while(TRUE){
                 $fanmino  = (isset($fancfg["FANMINO_$fan"])) ? intval($fancfg["FANMINO_$fan"])  : 16;
                 $fanmaxo  = (isset($fancfg["FANMAXO_$fan"])) ? intval($fancfg["FANMAXO_$fan"])  : $range;
                 $reading = floatval($sensors[$temp]['Reading']);
+                if ($temp == "99") {
+                    $reading = floatval(get_highest_temp_for_fan($fan));
+                    $sensors['99']['Reading'] = $reading;
+                }
                 $name    = htmlspecialchars($sensors[$temp]['Name']);
                 $use_override = false;
                 if ($temp == "99" && $reading <= 0) {
@@ -625,23 +670,21 @@ while(TRUE){ while(TRUE){
                 }
                 break;
             case "Supermicro":
-                //create command for Supermicro
-                $cmd_str = "ipmi-raw $raw $value $pwm $fanopts 2>&1; ";
-                //check if new pwm for FAN1234 then add to cmd string
-                if(($value == '00' || $value == '10') && $current_pwm !== $pwm && $pwm !== '00'){
-                    $cmd .= $cmd_str;
-
-                    //set current value for next loop
-                    $current_pwm  = $pwm;
-                    $exec = true;
-                }
-                // check if new pwm for FANA then add to cmd string
-                if(($value == '01' || $value == '11') && $current_pwm2 !== $pwm && $pwm !== '00'){
-                    $cmd .= $cmd_str;
-
-                    //set current value for next loop
-                    $current_pwm2 = $pwm;
-                    $exec = true;
+                // Several user-visible fan rules can share the same BMC PWM channel
+                // (for example Supermicro FAN1-FAN4 or FANA/FANB). Keep the rules
+                // independent in the UI, then send the highest requested PWM per
+                // raw BMC target so a cooler rule cannot slow a hotter neighbor.
+                $target_key = $board0.':'.$value;
+                $pwm_numeric = ($range == 255) ? hexdec($pwm) : intval($pwm);
+                if(!isset($max_pwm_by_target[$target_key]))
+                    $max_pwm_by_target[$target_key] = $pwm_numeric;
+                else
+                    $max_pwm_by_target[$target_key] = max($max_pwm_by_target[$target_key], $pwm_numeric);
+                if(!isset($pending_pwm_by_target[$target_key]) || $pwm_numeric >= $max_pwm_by_target[$target_key]){
+                    $pending_pwm_by_target[$target_key] = [
+                        'value' => $value,
+                        'pwm' => $pwm,
+                    ];
                 }
                 break;
             case "Dell":
@@ -669,6 +712,19 @@ while(TRUE){ while(TRUE){
                 break;
             }
             $fan_count++;
+        }
+        if($board === 'Supermicro'){
+            foreach($pending_pwm_by_target as $target_key => $target_pwm){
+                $pwm = $target_pwm['pwm'];
+                $value = $target_pwm['value'];
+                if(!isset($current_pwm_by_target[$target_key]))
+                    $current_pwm_by_target[$target_key] = '';
+                if($current_pwm_by_target[$target_key] !== $pwm && $pwm !== '00'){
+                    $cmd .= "ipmi-raw $raw $value $pwm $fanopts 2>&1; ";
+                    $current_pwm_by_target[$target_key] = $pwm;
+                    $exec = true;
+                }
+            }
         }
         switch($board) {
             case "ASRock":

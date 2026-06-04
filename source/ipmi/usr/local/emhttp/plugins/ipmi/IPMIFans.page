@@ -219,11 +219,13 @@ $(function(){
     <?if ($board_status !== false):?>
 
     initDriveDropdown(false);
+    initFanDriveDropdowns(false);
 
     // check if board supports ipmi
     $('#tab2').click(function() {
         checkBoard();
         initDriveDropdown(true);
+        initFanDriveDropdowns(true);
     });
 
     if($.cookie('one') == 'tab2')
@@ -346,6 +348,16 @@ function initDriveDropdown(remove) {
         $('#select-drives').dropdownchecklist('destroy');
     }
     DDCheckList('#select-drives','#HDDIGNORE');
+}
+
+function initFanDriveDropdowns(remove) {
+    $('.fanctrl-drive-select').each(function() {
+        var hiddenSelector = $(this).data('hidden');
+        if (remove) {
+            $(this).dropdownchecklist('destroy');
+        }
+        DDCheckList(this, hiddenSelector);
+    });
 }
 
 function sortFanBlocks() {
