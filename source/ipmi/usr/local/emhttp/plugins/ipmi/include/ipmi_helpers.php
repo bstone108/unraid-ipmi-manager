@@ -310,22 +310,63 @@ function normalize_fan_control_name($raw_name, $board, $index=1){
     return preg_replace('/[^A-Z0-9_]/', '_', $name ?: ('FAN'.$index));
 }
 
+function detected_fan_map($board, $board_json){
+    if(isset($board_json[$board]['detected_fans']) && is_array($board_json[$board]['detected_fans']))
+        return $board_json[$board]['detected_fans'];
+    return [];
+}
+
+function get_detected_fan_control_target($fan_name, $board, $board_json, $cmd_count=0){
+    $board_keys = [$board];
+    if($cmd_count !== 0)
+        $board_keys[] = $board.'1';
+
+    foreach($board_keys as $board_key){
+        $detected = detected_fan_map($board_key, $board_json);
+        if(isset($detected[$fan_name]['target']))
+            return $detected[$fan_name]['target'];
+        if(isset($board_json[$board_key]['fans'][$fan_name]))
+            return $board_json[$board_key]['fans'][$fan_name];
+    }
+    return null;
+}
+
+function detected_fan_present($fan_name, $board, $board_json, $cmd_count=0){
+    $has_detection = false;
+    $board_keys = [$board];
+    if($cmd_count !== 0)
+        $board_keys[] = $board.'1';
+    foreach($board_keys as $board_key){
+        $detected = detected_fan_map($board_key, $board_json);
+        if(!empty($detected)){
+            $has_detection = true;
+            if(isset($detected[$fan_name]))
+                return true;
+        }
+    }
+    return !$has_detection;
+}
+
 function get_shared_fan_channel_peers($fan_name, $board, $board_json, $cmd_count=0){
     $board_keys = [$board];
     if($cmd_count !== 0)
         $board_keys[] = $board.'1';
 
     foreach($board_keys as $board_key){
-        if(!isset($board_json[$board_key]['fans'][$fan_name]))
+        $target = get_detected_fan_control_target($fan_name, $board_key, $board_json, 0);
+        if($target === null)
             continue;
-        $target = $board_json[$board_key]['fans'][$fan_name];
         $peers = [];
-        foreach($board_json[$board_key]['fans'] as $candidate => $candidate_target){
-            if($candidate_target === $target)
+        $candidate_fans = isset($board_json[$board_key]['fans']) ? $board_json[$board_key]['fans'] : [];
+        $detected = detected_fan_map($board_key, $board_json);
+        foreach($detected as $candidate => $detected_info)
+            $candidate_fans[$candidate] = isset($detected_info['target']) ? $detected_info['target'] : null;
+        foreach($candidate_fans as $candidate => $candidate_target){
+            if($candidate_target === $target && detected_fan_present($candidate, $board_key, $board_json, 0))
                 $peers[] = $candidate;
         }
         if(count($peers) > 1)
-            return $peers;
+            return $peers; // detected shared channel
     }
 
     return [];
@@ -341,6 +382,8 @@ function get_fanctrl_options(){
             if($i > 23) break;
             if ($fan['Type'] === 'Fan'){
                 $name = normalize_fan_control_name($fan['Name'], $board, $i + 1);
+                if(!detected_fan_present($name, $board, $board_json, $cmd_count))
+                    continue;
                 $display = htmlspecialchars($fan['Name']);
                 $shared_peers = get_shared_fan_channel_peers($name, $board, $board_json, $cmd_count);
                 if(count($shared_peers) > 1){
@@ -652,6 +695,8 @@ function get_fan_channel_options($selected=''){
         if($fan['Type'] !== 'Fan')
             continue;
         $name = normalize_fan_control_name($fan['Name'], $board, count($seen) + 1);
+        if(!detected_fan_present($name, $board, $board_json, $cmd_count))
+            continue;
         if(isset($seen[$name]))
             continue;
         $seen[$name] = true;
@@ -699,11 +744,11 @@ function get_fan_group_editor(){
     echo '<dl><dt>Low temperature threshold (&deg;',$display_unit,'):</dt><dd><select id="fan-group-templo" data-group-field="TEMPLO">',get_temp_range('LO',30,$display_unit),'</select></dd></dl>';
     echo '<dl><dt>Fan speed maximum (%):</dt><dd><select id="fan-group-fanmax" data-group-field="FANMAX">',get_minmax_options('HI',64),'</select></dd></dl>';
     echo '<dl><dt>Fan speed minimum (%):</dt><dd><select id="fan-group-fanmin" data-group-field="FANMIN">',get_minmax_options('LO',16),'</select></dd></dl>';
-    echo '<dl><dt>HDD Spundown Temperature sensor:</dt><dd><select id="fan-group-temphdd" data-group-field="TEMPHDD"><option value="0">None</option>',get_temp_options(0),'</select></dd></dl>';
-    echo '<dl><dt>High temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temphio" data-group-field="TEMPHIO">',get_temp_range('HI',45,$display_unit),'</select></dd></dl>';
-    echo '<dl><dt>Low temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temploo" data-group-field="TEMPLOO">',get_temp_range('LO',30,$display_unit),'</select></dd></dl>';
-    echo '<dl><dt>Fan speed maximum Spundown (%):</dt><dd><select id="fan-group-fanmaxo" data-group-field="FANMAXO">',get_minmax_options('HI',64),'</select></dd></dl>';
-    echo '<dl><dt>Fan speed minimum Spundown (%):</dt><dd><select id="fan-group-fanmino" data-group-field="FANMINO">',get_minmax_options('LO',16),'</select></dd></dl>';
+    echo '<dl class="fan-group-spindown-row"><dt>HDD Spundown Temperature sensor:</dt><dd><select id="fan-group-temphdd" data-group-field="TEMPHDD"><option value="0">None</option>',get_temp_options(0),'</select></dd></dl>';
+    echo '<dl class="fan-group-spindown-detail-row"><dt>High temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temphio" data-group-field="TEMPHIO">',get_temp_range('HI',45,$display_unit),'</select></dd></dl>';
+    echo '<dl class="fan-group-spindown-detail-row"><dt>Low temperature threshold Spundown (&deg;',$display_unit,'):</dt><dd><select id="fan-group-temploo" data-group-field="TEMPLOO">',get_temp_range('LO',30,$display_unit),'</select></dd></dl>';
+    echo '<dl class="fan-group-spindown-detail-row"><dt>Fan speed maximum Spundown (%):</dt><dd><select id="fan-group-fanmaxo" data-group-field="FANMAXO">',get_minmax_options('HI',64),'</select></dd></dl>';
+    echo '<dl class="fan-group-spindown-detail-row"><dt>Fan speed minimum Spundown (%):</dt><dd><select id="fan-group-fanmino" data-group-field="FANMINO">',get_minmax_options('LO',16),'</select></dd></dl>';
     echo '<dl><dt>&nbsp;</dt><dd><input id="fan-group-save" type="submit" value="Add / Update Fan Group"><input id="fan-group-clear" type="button" value="Clear Editor"></dd></dl>';
     echo '</div>';
 }
@@ -717,7 +762,16 @@ function get_configured_fan_group_table(){
         $fans = isset($fancfg['FANS_'.$gid]) ? $fancfg['FANS_'.$gid] : '';
         $sensors = isset($fancfg['SENSORS_'.$gid]) ? $fancfg['SENSORS_'.$gid] : '';
         $hdds = isset($fancfg['HDDINCLUDE_'.$gid]) ? $fancfg['HDDINCLUDE_'.$gid] : '';
-        echo '<tr class="fan-group-row" data-group="',$safe,'" data-fans="',htmlspecialchars($fans),'" data-sensors="',htmlspecialchars($sensors),'" data-hdds="',htmlspecialchars($hdds),'">';
+        $temphdd = isset($fancfg['TEMPHDD_'.$gid]) ? $fancfg['TEMPHDD_'.$gid] : '0';
+        $temphi = isset($fancfg['TEMPHI_'.$gid]) ? $fancfg['TEMPHI_'.$gid] : '45';
+        $templo = isset($fancfg['TEMPLO_'.$gid]) ? $fancfg['TEMPLO_'.$gid] : '30';
+        $fanmax = isset($fancfg['FANMAX_'.$gid]) ? $fancfg['FANMAX_'.$gid] : '64';
+        $fanmin = isset($fancfg['FANMIN_'.$gid]) ? $fancfg['FANMIN_'.$gid] : '16';
+        $temphio = isset($fancfg['TEMPHIO_'.$gid]) ? $fancfg['TEMPHIO_'.$gid] : '45';
+        $temploo = isset($fancfg['TEMPLOO_'.$gid]) ? $fancfg['TEMPLOO_'.$gid] : '30';
+        $fanmaxo = isset($fancfg['FANMAXO_'.$gid]) ? $fancfg['FANMAXO_'.$gid] : '64';
+        $fanmino = isset($fancfg['FANMINO_'.$gid]) ? $fancfg['FANMINO_'.$gid] : '16';
+        echo '<tr class="fan-group-row" data-group="',$safe,'" data-fans="',htmlspecialchars($fans),'" data-sensors="',htmlspecialchars($sensors),'" data-hdds="',htmlspecialchars($hdds),'" data-temphdd="',htmlspecialchars($temphdd),'" data-temphi="',htmlspecialchars($temphi),'" data-templo="',htmlspecialchars($templo),'" data-fanmax="',htmlspecialchars($fanmax),'" data-fanmin="',htmlspecialchars($fanmin),'" data-temphio="',htmlspecialchars($temphio),'" data-temploo="',htmlspecialchars($temploo),'" data-fanmaxo="',htmlspecialchars($fanmaxo),'" data-fanmino="',htmlspecialchars($fanmino),'">';
         echo '<td>',$safe,'</td><td>',htmlspecialchars($fans),'</td><td>',htmlspecialchars($sensors),'</td><td>',($hdds === '' ? 'All / global' : htmlspecialchars($hdds)),'</td>';
         echo '<td><input type="button" value="Edit" onclick="editFanGroup(\'',$safe,'\')"><input type="button" value="Remove" onclick="removeFanGroup(\'',$safe,'\')"></td></tr>';
     }

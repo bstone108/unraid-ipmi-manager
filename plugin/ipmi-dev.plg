@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ipmi">
 <!ENTITY author    "SimonFair">
-<!ENTITY version   "2026.06.03.05">
+<!ENTITY version   "2026.06.03.06">
 <!ENTITY launch    "Settings/IPMI">
 <!ENTITY gitURL    "https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/main">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
@@ -17,6 +17,10 @@
 
 <CHANGES>
 ##&name;
+###2026.06.03.06
+- Hide HDD spundown detail settings when the spundown sensor is None and grey out the spundown sensor selector unless HDD temperature is selected.
+- Move HDD membership selection into each fan group, remove the redundant global Hard Drives to Poll selector, fix group HDD list population, and prevent the top fan option from selecting all fans.
+- Add active BMC fan probing that maps independent/shared raw control channels, records detected fans, and excludes fan sensors that remain at 0 RPM during probing.
 ###2026.06.03.05
 - Replace per-fan blocks with a fan-group editor above a configured-groups table; groups select fans, sensors, optional HDD members, and original fan-speed thresholds.
 - Treat Supermicro FAN1-FAN4 as separate default channels and only collapse fans after selected ports are detected with duplicate raw targets.

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "2026.06.03.05"
+VERSION = (ROOT / "VERSION").read_text().strip()
 
 
 def read(path: Path) -> str:
@@ -24,7 +24,7 @@ def test_mkpkg_uses_central_time_zfs_style_main_numeric_versions():
     assert 'date +"%Y.%m.%d"' in text
     assert '"%s.%02d"' in text
     assert "t%02d" not in text
-    assert re.search(r"for\s+build\s+in\s+\$\(seq\s+1\s+99\)", text)
+    assert re.search(r"for\s+build\s+in\s+\$\(seq\s+\$\(\(last_build\s*\+\s*1\)\)\s+99\)", text)
 
 
 def test_release_artifacts_for_current_version_exist():

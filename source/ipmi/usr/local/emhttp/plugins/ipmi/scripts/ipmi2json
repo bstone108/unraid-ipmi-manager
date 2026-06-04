@@ -119,6 +119,117 @@ function ipmi_sensors_fans() {
     unset($sensors);
 }
 
+function normalize_probe_fan_name($raw_name, $board, $index=1){
+    $name = strtoupper(trim(str_replace(' ', '_', $raw_name)));
+    if($board === 'Supermicro'){
+        if(preg_match('/CPU_FAN([1-4])$/', $name, $m))
+            return 'FAN'.$m[1];
+        if(preg_match('/^FAN([1-4]|A|B)$/', $name, $m))
+            return 'FAN'.$m[1];
+        if(preg_match('/SYS_FAN([1-9])$/', $name, $m))
+            return intval($m[1]) === 1 ? 'FANA' : 'FANB';
+    }
+    return preg_replace('/[^A-Z0-9_]/', '_', $name ?: ('FAN'.$index));
+}
+
+function sensor_rpm($sensor){
+    if(!isset($sensor['Reading']) || !is_numeric($sensor['Reading']))
+        return 0;
+    return intval($sensor['Reading']);
+}
+
+function exclude_zero_rpm_fans($baseline, $tested=null){
+    $present = [];
+    foreach($baseline as $id => $fan){
+        $base = sensor_rpm($fan);
+        $test = ($tested !== null && isset($tested[$id])) ? sensor_rpm($tested[$id]) : $base;
+        // Fans that continue to show 0 RPM during the test are treated as non-present.
+        if($base > 0 || $test > 0)
+            $present[$id] = $fan;
+    }
+    return $present;
+}
+
+function detect_fan_response($full_readings, $test_readings, $board){
+    $responses = [];
+    $present = exclude_zero_rpm_fans($full_readings, $test_readings);
+    foreach($present as $id => $fan){
+        if(!isset($test_readings[$id]))
+            continue;
+        $full = sensor_rpm($fan);
+        $test = sensor_rpm($test_readings[$id]);
+        if($full > 0 && ($full - $test) > 300){
+            $name = normalize_probe_fan_name($fan['Name'], $board, count($responses) + 1);
+            $responses[$name] = [
+                'sensor_id' => $id,
+                'sensor_name' => $fan['Name'],
+                'full_rpm' => $full,
+                'test_rpm' => $test,
+            ];
+        }
+    }
+    return $responses;
+}
+
+function probe_raw_command($board, $raw, $target, $pwm, $fanopts){
+    switch($board){
+        case 'Supermicro':
+            return "ipmi-raw $raw $target $pwm $fanopts 2>&1";
+        case 'Giga':
+            return "ipmi-raw $raw $pwm $target $fanopts 2>&1";
+        default:
+            return '';
+    }
+}
+
+function probe_fan_channels($board, $source_board_json, $fanopts, $debug=false){
+    $result = [];
+    foreach($source_board_json as $board_key => $board_data){
+        if(strpos($board_key, $board) !== 0 || !isset($board_data['fans']))
+            continue;
+        $raw = $board_data['raw'];
+        $full = $board_data['full'];
+        $auto = $board_data['auto'];
+        fanlog("Probing $board_key fan channels for shared/independent control and installed fans");
+        if(!empty($full))
+            shell_exec("ipmi-raw $raw $full $fanopts 2>&1");
+        sleep(5);
+        $fans_full = exclude_zero_rpm_fans(ipmi_sensors_fans());
+        $detected_fan_map = [];
+        $channel_to_fans = [];
+        foreach($board_data['fans'] as $candidate_name => $target){
+            $cmd = probe_raw_command($board, $raw, $target, '21', $fanopts);
+            if($debug && $cmd)
+                fanlog($cmd);
+            if($cmd)
+                shell_exec($cmd);
+            sleep(5);
+            $test_readings = ipmi_sensors_fans();
+            $responses = detect_fan_response($fans_full, $test_readings, $board);
+            $channel_to_fans[$target] = array_keys($responses);
+            foreach($responses as $fan_name => $info){
+                $detected_fan_map[$fan_name] = array_merge($info, ['target' => $target]);
+            }
+            $msg = empty($responses) ? 'no installed fan response' : implode(',', array_keys($responses));
+            fanlog("Probe $board_key target $target: $msg");
+            if(!empty($full))
+                shell_exec("ipmi-raw $raw $full $fanopts 2>&1");
+            sleep(2);
+        }
+        if(!empty($auto))
+            shell_exec("ipmi-raw $raw $auto $fanopts 2>&1");
+        $present_fans = [];
+        foreach($detected_fan_map as $fan_name => $info)
+            $present_fans[$fan_name] = $info['target'];
+        $result[$board_key] = $board_data;
+        $result[$board_key]['fans'] = $present_fans;
+        $result[$board_key]['detected_fans'] = $detected_fan_map;
+        $result[$board_key]['channel_to_fans'] = $channel_to_fans;
+    }
+    return $result;
+}
+
+
 ##############################
 #####  PROGRAM SECTION  ######
 ##############################
@@ -148,6 +259,7 @@ $lun   = '00';
 $netfn = '3a';
 $com   = '01';
 $raw   = '00 3a 01';
+$configured_board_json = $board_json;
 $board_json = [];
 $board_tmp = $board;
 
@@ -164,6 +276,15 @@ if ($cmd_count == 0){
 }
 
 fanlog('Checking IPMI fan Locations...');
+
+
+if(($board === 'Supermicro' || $board === 'Giga') && isset($configured_board_json[$board])){
+    $board_json = probe_fan_channels($board, $configured_board_json, $fanopts, $debug);
+    fanlog('Saving board configuration...');
+    file_put_contents($board_file, json_encode($board_json,JSON_PRETTY_PRINT));
+    debug("\nDECLARED VARIABLES:\n".print_r(get_defined_vars(), true));
+    exit(0);
+}
 
 for($i = 0; $i <= $cmd_count; $i++){
     $fans   = [];

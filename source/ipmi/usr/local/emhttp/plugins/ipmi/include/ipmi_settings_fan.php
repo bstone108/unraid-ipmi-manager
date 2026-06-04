@@ -9,7 +9,6 @@ $fanctrl    = isset($fancfg['FANCONTROL']) ? htmlspecialchars($fancfg['FANCONTRO
 $fanpoll    = isset($fancfg['FANPOLL'])    ? intval($fancfg['FANPOLL'])              : 6;
 $hddpoll    = isset($fancfg['HDDPOLL'])    ? intval($fancfg['HDDPOLL'])              : 18;
 $hddignore  = isset($fancfg['HDDIGNORE'])  ? htmlspecialchars($fancfg['HDDIGNORE'])  : '';
-$harddrives = isset($fancfg['HARDDRIVES']) ? htmlspecialchars($fancfg['HARDDRIVES']) : 'enable';
 $range      = 64;
 
 $fanip   = (isset($fancfg['FANIP']) && ($netsvc === 'enable')) ? htmlspecialchars($fancfg['FANIP']) : htmlspecialchars($ipaddr) ;
@@ -145,6 +144,20 @@ switch($board) {
         ]
     ];
     break;
+}
+
+
+$detected_board_file = "$plg_path/board.json";
+if (file_exists($detected_board_file)) {
+    $detected_board_json = json_decode(file_get_contents($detected_board_file), true);
+    if (is_array($detected_board_json)) {
+        foreach($detected_board_json as $detected_board_key => $detected_board_data) {
+            if (!isset($board_json[$detected_board_key]))
+                $board_json[$detected_board_key] = $detected_board_data;
+            else
+                $board_json[$detected_board_key] = array_replace_recursive($board_json[$detected_board_key], $detected_board_data);
+        }
+    }
 }
 
 // fan network options base64_decode(

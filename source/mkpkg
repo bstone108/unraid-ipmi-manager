@@ -11,6 +11,8 @@ TMPDIR=/tmp/tmp.$(( RANDOM * 19318203981230 + 40 ))
 PLUGIN=$(basename "${DIR}")
 ARCHIVE="$(dirname "$(dirname "${DIR}")")/archive"
 PLG_FILE="$(dirname "$(dirname "${DIR}")")/plugin/${PLUGIN}.plg"
+DEV_PLG_FILE="$(dirname "$(dirname "${DIR}")")/plugin/${PLUGIN}-dev.plg"
+VERSION_FILE="$(dirname "$(dirname "${DIR}")")/VERSION"
 BASE_VERSION=$(TZ=America/Chicago date +"%Y.%m.%d")
 ARCH="-x86_64-1"
 VERSION=""
@@ -18,7 +20,18 @@ PACKAGE=""
 MD5=""
 
 mkdir -p "${ARCHIVE}"
-for build in $(seq 1 99); do
+last_build=0
+for existing in "${ARCHIVE}/${PLUGIN}-${BASE_VERSION}."[0-9][0-9]"${ARCH}".txz; do
+    [[ -e "${existing}" ]] || continue
+    existing_version=$(basename "${existing}")
+    existing_version=${existing_version#${PLUGIN}-${BASE_VERSION}.}
+    existing_version=${existing_version%${ARCH}.txz}
+    if [[ "${existing_version}" =~ ^[0-9][0-9]$ ]] && (( 10#${existing_version} > last_build )); then
+        last_build=$((10#${existing_version}))
+    fi
+done
+
+for build in $(seq $((last_build + 1)) 99); do
     candidate=$(printf "%s.%02d" "${BASE_VERSION}" "${build}")
     PKG="${ARCHIVE}/${PLUGIN}-${candidate}${ARCH}.txz"
     if [[ ! -f $PKG ]]; then
@@ -34,9 +47,16 @@ if [[ -z "${VERSION}" ]]; then
     exit 1
 fi
 
+printf "%s\n" "${VERSION}" > "${VERSION_FILE}"
 sed -i -e "s#\(ENTITY\s*version[^\"]*\).*#\1\"${VERSION}\">#" "${PLG_FILE}"
+if [[ -f "${DEV_PLG_FILE}" ]]; then
+    sed -i -e "s#\(ENTITY\s*version[^\"]*\).*#\1\"${VERSION}\">#" "${DEV_PLG_FILE}"
+fi
 if ! grep -q "^###${VERSION}$" "${PLG_FILE}"; then
     sed -i "/##&name/a\###${VERSION}" "${PLG_FILE}"
+fi
+if [[ -f "${DEV_PLG_FILE}" ]] && ! grep -q "^###${VERSION}$" "${DEV_PLG_FILE}"; then
+    sed -i "/##&name/a\###${VERSION}" "${DEV_PLG_FILE}"
 fi
 
 mkdir -p "${TMPDIR}/"

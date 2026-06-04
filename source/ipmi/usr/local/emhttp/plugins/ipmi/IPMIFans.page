@@ -99,9 +99,7 @@ Cond="exec(\"grep -o '^OVERRIDE=.enable' /boot/config/plugins/ipmi/ipmi.cfg 2>/d
 
 <dl>
     <dt><input id="FAN_DEFAULT" class="fanctrl-run" type="button" value="Default" title="loads the default values for fan control">
-    <?if ($board === 'ASRock' || $board === 'ASRockRack'):?>
-        <input id="btnConfig" class="fanctrl-run" type="button" value="Configure" title="tests your fans and determines their location for fan control">
-    <?endif;?>
+    <input id="btnConfig" class="fanctrl-run" type="button" value="Configure" title="tests your fans and determines their location for fan control">
     </dt>
     <dd><span><input id="btnFANApply" type="submit" value="Apply"><input type="button" value="Done" onClick="done()"><span></dd>
 </dl>
@@ -141,25 +139,6 @@ Cond="exec(\"grep -o '^OVERRIDE=.enable' /boot/config/plugins/ipmi/ipmi.cfg 2>/d
     <p>Fan speed maximum spundown (1-100%):  Select the highest value a fan can reach. Useful to keep a fan below a certain speed.</p>
     <p>Fan speed minimum spundown (1-100%):  Select the lowest value a fan can reach. Useful to prevent fan from stopping or going below a certain rpm.</p>
 </blockquote>
-
-    <dl>
-        <dt>Hard Drives to Poll:</dt>
-        <dd>
-            <select multiple id="select-drives" title="Select hard drives that are polled for fan control">
-                <option value="">Select All</option>
-                <?=get_hdd_options($hddignore);?>
-            </select>
-        </dd>
-        <input type="hidden" id="HDDIGNORE" name="HDDIGNORE" value="<?=htmlspecialchars($hddignore);?>" />
-
-        <input type="hidden" id="select-drives-svc" name="HARDDRIVES" value="<?=htmlspecialchars($harddrives);?>">
-    </dl>
-    <blockquote class="inline_help">
-        <p>Select Hard Drives to poll for HDD Temperature</p>
-    </blockquote>
-
-    &nbsp;
-
 <?if ((($netsvc == 'disable') || (($netsvc == 'enable') && ($fanip != 'None')))):?>
 
     <?get_fan_group_editor();?>
@@ -219,18 +198,16 @@ document.addEventListener('DOMContentLoaded', function() {
 $(function(){
     <?if ($board_status !== false):?>
 
-    initDriveDropdown(false);
     initFanDriveDropdowns(false);
     initFanGroupDropdowns(false);
     $('form[name="fanctrl_options"]').on('submit', prepareFanGroupSubmit);
     $('#fan-group-clear').on('click', clearFanGroupEditor);
-    $('#fan-group-sensors').on('change', syncFanGroupHddVisibility);
-    syncFanGroupHddVisibility();
+    $('#fan-group-sensors, #fan-group-temphdd').on('change', syncFanGroupSpindownVisibility);
+    syncFanGroupSpindownVisibility();
 
     // check if board supports ipmi
     $('#tab2').click(function() {
         checkBoard();
-        initDriveDropdown(true);
         initFanDriveDropdowns(true);
         initFanGroupDropdowns(true);
     });
@@ -249,6 +226,8 @@ $(function(){
         //$('.fanctrl-settings').toggle('slow');
         $.cookie('fanctrl_view_mode', $('#advancedview')[0].checked ? 'advanced' : 'basic', { expires: 3650 });
         toggleFanCTRL();
+        $('.fanctrl-temp').trigger('change');
+        syncFanGroupSpindownVisibility();
     });
 
     // Set a deterministic initial state to avoid settings text flashing on first paint.
@@ -349,12 +328,28 @@ function clearFanLOG() {
     });
 }
 
-function initDriveDropdown(remove) {
 
-    if (remove){
-        $('#select-drives').dropdownchecklist('destroy');
-    }
-    DDCheckList('#select-drives','#HDDIGNORE');
+function DDCheckList(Select,Values,firstItemChecksAll) {
+    $(Select).dropdownchecklist( {
+        emptyText: 'Nothing Available',
+        icon: {placement: 'right', toOpen: 'ui-icon-triangle-1-s', toClose: 'ui-icon-triangle-1-n'},
+        width: 300,
+        explicitClose: 'close',
+        firstItemChecksAll: (firstItemChecksAll !== false),
+        textFormatFunction: function(options) { return 'Select'; },
+        onComplete: function(selector){
+            if (!Values) return;
+            var values = '';
+            var Size = selector.options.length;
+            for (var i=1; i < Size; i++ ) {
+                if ((selector.options[i].selected == false) && (selector.options[i].value !== '')){
+                    if (values != '') values += ',';
+                    values += selector.options[i].value;
+                }
+            }
+            $(Values).val(values);
+        }
+    });
 }
 
 function initFanDriveDropdowns(remove) {
@@ -363,18 +358,23 @@ function initFanDriveDropdowns(remove) {
         if (remove) {
             $(this).dropdownchecklist('destroy');
         }
-        DDCheckList(this, hiddenSelector);
+        DDCheckList(this, hiddenSelector, true);
     });
 }
 
 function initFanGroupDropdowns(remove) {
-    ['#fan-group-fans', '#fan-group-sensors', '#fan-group-hdds'].forEach(function(selector) {
-        if ($(selector).length === 0) return;
-        if (remove) {
-            $(selector).dropdownchecklist('destroy');
-        }
-        DDCheckList(selector, null);
-    });
+    if ($('#fan-group-fans').length) {
+        if (remove) $('#fan-group-fans').dropdownchecklist('destroy');
+        DDCheckList('#fan-group-fans', null, false);
+    }
+    if ($('#fan-group-sensors').length) {
+        if (remove) $('#fan-group-sensors').dropdownchecklist('destroy');
+        DDCheckList('#fan-group-sensors', null, false);
+    }
+    if ($('#fan-group-hdds').length) {
+        if (remove) $('#fan-group-hdds').dropdownchecklist('destroy');
+        DDCheckList('#fan-group-hdds', null, true);
+    }
 }
 
 function fanGroupArray(selector) {
@@ -405,15 +405,23 @@ function setFanGroups(groups) {
     $('#FANGROUPS').val(clean.join(','));
 }
 
-function syncFanGroupHddVisibility() {
-    $('.fan-group-hdd-row').toggle($.inArray('99', fanGroupArray('#fan-group-sensors')) >= 0);
+function syncFanGroupSpindownVisibility() {
+    var hasHddSensor = ($.inArray('99', fanGroupArray('#fan-group-sensors')) >= 0);
+    var spindownValue = String($('#fan-group-temphdd').val() || '0');
+    $('.fan-group-hdd-row').toggle(hasHddSensor);
+    $('#fan-group-temphdd').prop('disabled', !hasHddSensor);
+    if (!hasHddSensor) {
+        $('#fan-group-temphdd').val('0');
+        spindownValue = '0';
+    }
+    $('.fan-group-spindown-detail-row').toggle(hasHddSensor && spindownValue !== '0');
 }
 
 function clearFanGroupEditor() {
     $('#fan-group-edit-id').val('');
     $('#fan-group-name').val('');
     $('#fan-group-fans, #fan-group-sensors, #fan-group-hdds').val([]).trigger('change');
-    syncFanGroupHddVisibility();
+    syncFanGroupSpindownVisibility();
 }
 
 function editFanGroup(groupId) {
@@ -423,7 +431,16 @@ function editFanGroup(groupId) {
     $('#fan-group-fans').val((row.data('fans') || '').split(',')).trigger('change');
     $('#fan-group-sensors').val((row.data('sensors') || '').split(',')).trigger('change');
     $('#fan-group-hdds').val((row.data('hdds') || '').split(',')).trigger('change');
-    syncFanGroupHddVisibility();
+    $('#fan-group-temphdd').val(row.data('temphdd') || '0');
+    $('#fan-group-temphi').val(row.data('temphi') || '45');
+    $('#fan-group-templo').val(row.data('templo') || '30');
+    $('#fan-group-fanmax').val(row.data('fanmax') || '64');
+    $('#fan-group-fanmin').val(row.data('fanmin') || '16');
+    $('#fan-group-temphio').val(row.data('temphio') || '45');
+    $('#fan-group-temploo').val(row.data('temploo') || '30');
+    $('#fan-group-fanmaxo').val(row.data('fanmaxo') || '64');
+    $('#fan-group-fanmino').val(row.data('fanmino') || '16');
+    syncFanGroupSpindownVisibility();
 }
 
 function removeFanGroup(groupId) {
