@@ -8,7 +8,7 @@ Others are welcome to use this copy if it is useful to them.
 
 For manual plugin installation in Unraid, use this plugin URL:
 
-https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/testing/plugin/ipmi.plg
+https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/main/plugin/ipmi.plg
 
 Credit for the original project goes to Simon Fair and the original contributors.
 
