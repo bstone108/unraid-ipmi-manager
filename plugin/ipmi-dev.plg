@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ipmi">
 <!ENTITY author    "SimonFair">
-<!ENTITY version   "2025.01.26c">
+<!ENTITY version   "2026.06.03.t01">
 <!ENTITY launch    "Settings/IPMI">
 <!ENTITY gitURL    "https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/main">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
@@ -17,6 +17,9 @@
 
 <CHANGES>
 ##&name;
+###2026.06.03.t01
+- Testing build with independent IPMI fan-control improvements: Supermicro shared BMC PWM channels are auto-grouped, FANB is included where exposed, and per-fan/per-group drive selection is available for HDD temperature control.
+- Removed the stale upstream GitHub URL from the package description.
 ###2025.01.26c
 - Bold Line in helptext Thanks to spl147
 ###2025.01.26b
