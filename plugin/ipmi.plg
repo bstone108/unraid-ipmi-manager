@@ -5,7 +5,7 @@
 <!ENTITY author    "SimonFair">
 <!ENTITY version   "2026.05.05">
 <!ENTITY launch    "Settings/IPMI">
-<!ENTITY gitURL    "https://raw.githubusercontent.com/&author;/IPMI-unRAID/master">
+<!ENTITY gitURL    "https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/testing">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
 <!ENTITY pkgURL    "&gitURL;/packages">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
