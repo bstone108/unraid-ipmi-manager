@@ -2,14 +2,14 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "2026.06.03.t01"
+VERSION = "2026.06.03.t02"
 
 
 def read(path: Path) -> str:
     return path.read_text(errors="replace")
 
 
-def test_plugin_manifests_use_zfs_style_testing_version():
+def test_plugin_manifests_use_zfs_style_main_version():
     for manifest in [ROOT / "plugin/ipmi.plg", ROOT / "plugin/ipmi-dev.plg"]:
         text = read(manifest)
         assert f'<!ENTITY version   "{VERSION}">' in text
