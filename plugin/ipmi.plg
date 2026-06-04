@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ipmi">
 <!ENTITY author    "SimonFair">
-<!ENTITY version   "2026.06.03.03">
+<!ENTITY version   "2026.06.03.04">
 <!ENTITY launch    "Settings/IPMI">
 <!ENTITY gitURL    "https://raw.githubusercontent.com/bstone108/unraid-ipmi-manager/main">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
@@ -17,6 +17,8 @@
 
 <CHANGES>
 ##&name;
+###2026.06.03.04
+- Keep Supermicro fan controls visibly split as FAN1-FAN4/FANA/FANB while labeling any shared BMC PWM channel; shared channels are still protected by highest-PWM aggregation in the daemon.
 ###2026.06.03.03
 - Main branch release build using numeric main-version suffix without testing `t` marker.
 ###2026.06.03.t02

@@ -310,39 +310,25 @@ function normalize_fan_control_name($raw_name, $board, $index=1){
     return preg_replace('/[^A-Z0-9_]/', '_', $name ?: ('FAN'.$index));
 }
 
-function fan_control_group_contains($group_name, $fan_name){
-    if($group_name === $fan_name)
-        return true;
-
-    if(preg_match('/^FAN([0-9])$/', $fan_name, $m) && preg_match('/^FAN([0-9]+)$/', $group_name, $g))
-        return strpos($g[1], $m[1]) !== false;
-
-    if(preg_match('/^FAN([A-Z])$/', $fan_name, $m) && preg_match('/^FAN([A-Z]+)$/', $group_name, $g))
-        return strpos($g[1], $m[1]) !== false;
-
-    return false;
-}
-
-function resolve_shared_fan_control_name($fan_name, $board, $board_json, $cmd_count=0){
-    if($board !== 'Supermicro')
-        return $fan_name;
-
-    $board_keys = ['Supermicro'];
+function get_shared_fan_channel_peers($fan_name, $board, $board_json, $cmd_count=0){
+    $board_keys = [$board];
     if($cmd_count !== 0)
-        $board_keys[] = 'Supermicro1';
+        $board_keys[] = $board.'1';
 
     foreach($board_keys as $board_key){
-        if(!isset($board_json[$board_key]['fans']))
+        if(!isset($board_json[$board_key]['fans'][$fan_name]))
             continue;
-        if(array_key_exists($fan_name, $board_json[$board_key]['fans']))
-            return $fan_name;
-        foreach($board_json[$board_key]['fans'] as $group_name => $target){
-            if(fan_control_group_contains($group_name, $fan_name))
-                return $group_name;
+        $target = $board_json[$board_key]['fans'][$fan_name];
+        $peers = [];
+        foreach($board_json[$board_key]['fans'] as $candidate => $candidate_target){
+            if($candidate_target === $target)
+                $peers[] = $candidate;
         }
+        if(count($peers) > 1)
+            return $peers;
     }
 
-    return $fan_name;
+    return [];
 }
 
 /* get all fan options for fan control */
@@ -351,18 +337,16 @@ function get_fanctrl_options(){
     if($board_status) {
         $i = 0;
         $seen_fans = [];
-        $shared_control_seen = [];
         foreach($fansensors as $id => $fan){
             if($i > 23) break;
             if ($fan['Type'] === 'Fan'){
-                $detected_name = normalize_fan_control_name($fan['Name'], $board, $i + 1);
-                $name = resolve_shared_fan_control_name($detected_name, $board, $board_json, $cmd_count);
-                if(isset($shared_control_seen[$name]))
-                    continue;
-                $shared_control_seen[$name] = true;
+                $name = normalize_fan_control_name($fan['Name'], $board, $i + 1);
                 $display = htmlspecialchars($fan['Name']);
-                if($name !== $detected_name)
-                    $display = htmlspecialchars($name.' (Shared BMC channel)');
+                $shared_peers = get_shared_fan_channel_peers($name, $board, $board_json, $cmd_count);
+                if(count($shared_peers) > 1){
+                    $shared_label = htmlspecialchars(implode(', ', $shared_peers));
+                    $display .= ' <span class="orange-text fan-shared-channel" title="These fan sensors share one BMC PWM control channel">Shared channel: '.$shared_label.'</span>';
+                }
                 if(isset($seen_fans[$name]))
                     $name .= '_'.$id;
                 $seen_fans[$name] = true;

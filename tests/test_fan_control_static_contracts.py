@@ -11,15 +11,15 @@ def read(path: Path) -> str:
     return path.read_text(errors="replace")
 
 
-def test_supermicro_default_targets_are_detected_then_grouped_when_shared():
+def test_supermicro_default_targets_keep_individual_fans_and_do_not_collapse_to_original_groups():
     text = read(SETTINGS_FAN)
     supermicro_section = text.split("case  'Supermicro':", 1)[1].split("case 'Dell':", 1)[0]
     for fan in ["FAN1", "FAN2", "FAN3", "FAN4", "FANA", "FANB"]:
         assert f"'{fan}'" in supermicro_section
-    assert "ipmi_group_shared_fan_channels" in text
+    assert "ipmi_group_shared_fan_channels" not in text
     assert "'FAN1234' => '00'" not in supermicro_section
     assert "'FANAB' => '01'" not in supermicro_section
-    assert "$board_json['Supermicro']['fans'] = ipmi_group_shared_fan_channels" in supermicro_section
+    assert "$board_json['Supermicro']['fans'] = ipmi_group_shared_fan_channels" not in supermicro_section
 
 
 def test_package_description_does_not_advertise_old_github_link():
@@ -29,12 +29,13 @@ def test_package_description_does_not_advertise_old_github_link():
     assert "allows you to view your system sensors" in slack_desc
 
 
-def test_fan_ui_groups_autodetected_fans_when_bmc_targets_are_shared_and_allows_per_group_drive_selection():
+def test_fan_ui_keeps_autodetected_fans_visible_and_labels_shared_bmc_channels():
     helpers = read(HELPERS)
     assert "normalize_fan_control_name" in helpers
-    assert "resolve_shared_fan_control_name" in helpers
-    assert "shared_control_seen" in helpers
-    assert "Shared BMC channel" in helpers
+    assert "get_shared_fan_channel_peers" in helpers
+    assert "shared_control_seen" not in helpers
+    assert "fan-shared-channel" in helpers
+    assert "Shared channel:" in helpers
     assert "fanctrl-drive-select" in helpers
     assert "fanctrl-drive-hidden" in helpers
     assert "HDDINCLUDE_" in helpers
