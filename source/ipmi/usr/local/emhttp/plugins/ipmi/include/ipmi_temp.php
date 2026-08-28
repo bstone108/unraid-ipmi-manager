@@ -7,6 +7,8 @@ function format_ipmi_temp($reading, $unit, $dot) {
 }
 
 $disp_sensors = [$disp_sensor1, $disp_sensor2, $disp_sensor3, $disp_sensor4];
+$unit = (isset($_GET['unit']) && $_GET['unit'] === 'F') ? 'F' : 'C';
+$dot = (isset($_GET['dot']) && $_GET['dot'] === ',') ? ',' : '.';
 
 if (!empty($disp_sensors)){
     $readings = ipmi_sensors($ignore);
@@ -33,14 +35,14 @@ if (!empty($disp_sensors)){
                 if ($disp_reading > $UpperC && $UpperC != 0)
                     $Color = 'red';
                 if ($disp_name == "HDD Temperature") $icon = "fa-hdd-o"; else $icon = "fa-thermometer";
-                $displays[] = "<span title='$disp_name ($disp_id)'><i class='icon fa $icon'></i><font color='$Color'>".
-                    format_ipmi_temp(floatval($disp_reading), htmlspecialchars($_GET['unit']), htmlspecialchars($_GET['dot'])).'</font></span>';
+                $displays[] = "<span title='".ipmi_h($disp_name)." (".ipmi_h($disp_id).")'><i class='icon fa $icon'></i><font color='$Color'>".
+                    format_ipmi_temp(floatval($disp_reading), $unit, $dot).'</font></span>';
             }elseif($readings[$disp_sensor]['Type'] === 'Fan'){
                 // if Fan RPMs are less than lower non-critical
                 if ($disp_reading < $LowerNC || $disp_reading < $LowerC || $disp_reading < $LowerNR)
                     $Color = "red";
 
-                $displays[] = "<span title='$disp_name ($disp_id)'><i class='icon fa fa-tachometer'></i><font color='$Color'>".
+                $displays[] = "<span title='".ipmi_h($disp_name)." (".ipmi_h($disp_id).")'><i class='icon fa fa-tachometer'></i><font color='$Color'>".
                     floatval($disp_reading)."</font><small>rpm</small></span>";
             }elseif($readings[$disp_sensor]['Type'] === 'Voltage'){
                 // if Voltage is less than lower non-critical
@@ -49,16 +51,16 @@ if (!empty($disp_sensors)){
                 if ($disp_reading > $UpperNC || $disp_reading > $UpperC || $disp_reading > $UpperNR)
                     $Color = "red";
 
-                $displays[] = "<span title='$disp_name ($disp_id)'><i class='icon fa fa-bolt'></i><font color='$Color'>".
+                $displays[] = "<span title='".ipmi_h($disp_name)." (".ipmi_h($disp_id).")'><i class='icon fa fa-bolt'></i><font color='$Color'>".
                     floatval($disp_reading)."</font><small>v</small></span>";
             }elseif($readings[$disp_sensor]['Type'] === 'OEM Reserved'){
                 if($disp_reading === 'Medium')
                     $Color = 'orange';
                 if($disp_reading === 'High')
                     $Color = 'Red';
-                $displays[] = "<span title='$disp_name ($disp_id)'><i class='icon fa fa-thermometer'></i><font color='$Color'>$disp_reading</font></span>";
+                $displays[] = "<span title='".ipmi_h($disp_name)." (".ipmi_h($disp_id).")'><i class='icon fa fa-thermometer'></i><font color='$Color'>".ipmi_h($disp_reading)."</font></span>";
             }else{
-                $displays[] = "<span title='$disp_name ($disp_id)'><i class='icon fa fa-tachometer'><font color='$Color'>$disp_reading</font></span>";
+                $displays[] = "<span title='".ipmi_h($disp_name)." (".ipmi_h($disp_id).")'><i class='icon fa fa-tachometer'><font color='$Color'>".ipmi_h($disp_reading)."</font></span>";
             }
         }
     }

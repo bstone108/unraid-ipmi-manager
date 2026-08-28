@@ -53,6 +53,7 @@ table.tablesorter tbody tr:nth-child(even) {
 
 <script src="<?=autov('/plugins/ipmi/js/jquery.tablesorter.combined.min.js');?>"></script>
 <script src="<?=autov('/plugins/ipmi/js/jquery.tablesorter.pager.min.js');?>"></script>
+<script src="<?=autov('/plugins/ipmi/js/ipmi-escape.js');?>"></script>
 <script src="<?=autov('/webGui/javascript/jquery.switchbutton.js');?>"></script>
 
 <script>
@@ -195,7 +196,7 @@ function sensorArray(Refresh){
                     Units += '&deg;';
 
                 }
-                Units += sensor.Units;
+                Units += ipmiEscapeHtml(sensor.Units);
             }else {
                 Color = 'blue'; // reading equals N/A
                 if(sensor.Type == 'OEM Reserved'){
@@ -212,23 +213,23 @@ function sensorArray(Refresh){
             }
 
             if(Refresh) {
-                $('#'+i+' td.reading').html('<font color="'+ Color + '">'+ Reading + Units +'</font>');
+                $('#'+i+' td.reading').html('<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font>');
             } else {
                 var Host = (typeof sensor.IP == 'undefined') ? '' : sensor.IP; // check for ip
                 $('#tblSensor tbody')
-                .append('<tr id="'+i+'">'+
-                '<td title="'+sensor.State+'"><i class="fa fa-circle orb '+ data.State[sensor.State] +'-orb middle"></i></td>'+ //state
-                '<td class="network">' +Host+'</td>'+ // sensor host ip address
-                '<td class="advanced">'+ sensor.ID      +'</td>'+ // sensor id
-                '<td>'+sensor.Name+'</td>'+ //sensor name
-                '<td class="advanced">'+ sensor.LowerNR +'</td>'+ // lower non recoverable
-                '<td class="advanced">'+ sensor.LowerC  +'</td>'+ // lower critical
-                '<td class="advanced">'+ sensor.LowerNC +'</td>'+ // lower non critical
-                '<td class="reading">' + '<font color="'+ Color + '">'+ Reading + Units +'</font></td>'+ //sensor reading
-                '<td>'+sensor.Type+'</td>'+ //sensor type
-                '<td class="advanced">'+ sensor.UpperNC +'</td>'+ // upper non critical
-                '<td class="advanced">'+ sensor.UpperC  +'</td>'+ // upper critical
-                '<td class="advanced">'+ sensor.UpperNR +'</td>'+ // upper non recoverable
+                .append('<tr id="'+ipmiEscapeHtml(i)+'">'+
+                '<td title="'+ipmiEscapeHtml(sensor.State)+'"><i class="fa fa-circle orb '+ ipmiEscapeHtml(data.State[sensor.State]) +'-orb middle"></i></td>'+ //state
+                '<td class="network">' +ipmiEscapeHtml(Host)+'</td>'+ // sensor host ip address
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.ID)      +'</td>'+ // sensor id
+                '<td>'+ipmiEscapeHtml(sensor.Name)+'</td>'+ //sensor name
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.LowerNR) +'</td>'+ // lower non recoverable
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.LowerC)  +'</td>'+ // lower critical
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.LowerNC) +'</td>'+ // lower non critical
+                '<td class="reading">' + '<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font></td>'+ //sensor reading
+                '<td>'+ipmiEscapeHtml(sensor.Type)+'</td>'+ //sensor type
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.UpperNC) +'</td>'+ // upper non critical
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.UpperC)  +'</td>'+ // upper critical
+                '<td class="advanced">'+ ipmiEscapeHtml(sensor.UpperNR) +'</td>'+ // upper non recoverable
                 '</tr>');
             }
         });

@@ -3,6 +3,7 @@ Cond="parse_ini_file('/boot/config/plugins/ipmi/ipmi.cfg')['DASH'] == 'enable' &
 ---
 
 
+<script src="<?=autov('/plugins/ipmi/js/ipmi-escape.js');?>"></script>
 <script>
 $(function(){
     $('#db-box1')
@@ -72,7 +73,7 @@ function sensorArray(Refresh){
                     Units += '&deg;';
 
                 }
-                Units += sensor.Units;
+                Units += ipmiEscapeHtml(sensor.Units);
             }else {
                 Color = 'blue'; // reading equals N/A
                 if(sensor.Type == 'OEM Reserved'){
@@ -89,14 +90,14 @@ function sensorArray(Refresh){
             }
 
             if(Refresh) {
-                $('#'+i+' td.reading').html('<font color="'+ Color + '">'+ Reading + Units +'</font>');
+                $('#'+i+' td.reading').html('<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font>');
             } else {
 
             $('#tblIPMIDash')
-            .append("<tr class='ipmi_view' style='display: none;' id='"+i+"'><td></td>"+
-            '<td title="'+sensor.State+'"><i class="fa fa-circle orb '+ data.State[sensor.State] +'-orb middle"></td>'+ //state
-            '<td>'+sensor.Name+'</td>'+ //sensor name
-            '<td class="reading">'+ '<font color="'+ Color + '">'+ Reading + Units +'</font></td><td></td>'+ //sensor reading
+            .append("<tr class='ipmi_view' style='display: none;' id='"+ipmiEscapeHtml(i)+"'><td></td>"+
+            '<td title="'+ipmiEscapeHtml(sensor.State)+'"><i class="fa fa-circle orb '+ ipmiEscapeHtml(data.State[sensor.State]) +'-orb middle"></td>'+ //state
+            '<td>'+ipmiEscapeHtml(sensor.Name)+'</td>'+ //sensor name
+            '<td class="reading">'+ '<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font></td><td></td>'+ //sensor reading
             '</tr>');
             }
         });
