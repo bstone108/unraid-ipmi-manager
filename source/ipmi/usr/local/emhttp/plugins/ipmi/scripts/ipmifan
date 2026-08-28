@@ -73,13 +73,14 @@ $quit   = (array_key_exists('quit', $args));
 $raw  = (empty($board_json)) ? '' : $board_json[$board]['raw'];
 
 if(file_exists($lockfile)){
-    $lock_pid = file($lockfile, FILE_IGNORE_NEW_LINES)[0];
-    $pid_running = preg_replace("/\s+/", "", shell_exec("ps -p $lock_pid | grep $lock_pid"));
+    $lock_pid = intval(file($lockfile, FILE_IGNORE_NEW_LINES)[0]);
+    $pid_arg = escapeshellarg((string)$lock_pid);
+    $pid_running = ($lock_pid > 0) ? preg_replace("/\s+/", "", shell_exec("ps -p $pid_arg | grep $pid_arg")) : '';
     if($pid_running){
         if($quit){
             fanlog('Stopping Fan Control');
             syslog(LOG_INFO, "killing daemon with PID [$lock_pid]");
-            exec("kill $lock_pid");
+            exec("kill $pid_arg");
             unlink($lockfile);
             autofan();
             exit(0);
@@ -265,27 +266,27 @@ function autofan() {
             //if board is ASRock or AsRockRack
             for($i = 0; $i <= $cmd_count; $i++){
                 $board0 = ($i == 0) ? $board : $board.$i;
-                $raw    = $board_json[$board0]['raw'];
-                $auto   = $board_json[$board0]['auto'];
+                $raw    = ipmi_hex_tokens($board_json[$board0]['raw']);
+                $auto   = ipmi_hex_tokens($board_json[$board0]['auto']);
                 $cmd   .= "ipmi-raw $raw $auto $fanopts 2>&1 >/dev/null &";
             }
             break;
         case "Supermicro":
             //if board is Supermicro
-            $raw    = $board_json[$board]['raw'];
-            $auto = $board_json[$board]['auto'];
-            $mode = trim(shell_exec("ipmi-raw 00 30 45 00 | awk -F '45 00 ' '{print $2}'"));
+            $raw    = ipmi_hex_tokens($board_json[$board]['raw']);
+            $auto = ipmi_hex_tokens($board_json[$board]['auto']);
+            $mode = ipmi_hex_tokens(trim(shell_exec("ipmi-raw 00 30 45 00 | awk -F '45 00 ' '{print $2}'")));
             $cmd  = "ipmi-raw $auto $mode $fanopts 2>&1 >/dev/null &";
             break;
         case "Dell":
             //if board is Dell
-            $raw = $board_json[$board]['raw'];
-            $auto = $board_json[$board]['auto'];
+            $raw = ipmi_hex_tokens($board_json[$board]['raw']);
+            $auto = ipmi_hex_tokens($board_json[$board]['auto']);
             $cmd   = "ipmi-raw $auto $fanopts 2>&1 >/dev/null &";
             break;
         case "Giga":
             //if board is Giga
-            $auto = $board_json[$board]['auto'];
+            $auto = ipmi_hex_tokens($board_json[$board]['auto']);
             $cmd  = "ipmi-raw $auto $fanopts 2>&1 >/dev/null &";
             break;
     }
@@ -308,22 +309,22 @@ function manualfan() {
             //if board is ASRock or AsRockRack
             for($i = 0; $i <= $cmd_count; $i++){
                 $board0 = ($i == 0) ? $board : $board.$i;
-                $raw    = $board_json[$board0]['raw'];
-                $auto   = $board_json[$board0]['auto'];
+                $raw    = ipmi_hex_tokens($board_json[$board0]['raw']);
+                $auto   = ipmi_hex_tokens($board_json[$board0]['auto']);
                 $cmd   .= "ipmi-raw $raw $auto $fanopts 2>&1 >/dev/null &";
             }
             break;
         case "Supermicro":
             //if board is Supermicro
-            $raw    = $board_json[$board]['raw'];
-            $auto = $board_json[$board]['auto'];
-            $mode = trim(shell_exec("ipmi-raw 00 30 45 00 | awk -F '45 00 ' '{print $2}'"));
+            $raw    = ipmi_hex_tokens($board_json[$board]['raw']);
+            $auto = ipmi_hex_tokens($board_json[$board]['auto']);
+            $mode = ipmi_hex_tokens(trim(shell_exec("ipmi-raw 00 30 45 00 | awk -F '45 00 ' '{print $2}'")));
             $cmd  = "ipmi-raw $auto $mode $fanopts 2>&1 >/dev/null &";
             break;
         case "Dell":
             //if board is Dell
-            $raw    = $board_json[$board]['raw'];
-            $manual = $board_json[$board]['manual'];
+            $raw    = ipmi_hex_tokens($board_json[$board]['raw']);
+            $manual = ipmi_hex_tokens($board_json[$board]['manual']);
             $cmd   = "ipmi-raw $manual $fanopts 2>&1 >/dev/null &";
             break;
     }
@@ -347,25 +348,25 @@ function fullfan() {
             $cmd = '';
             for($i = 0; $i <= $cmd_count; $i++){
                 $board0 = ($i == 0) ? $board : $board.$i;
-                $raw    = $board_json[$board0]['raw'];
-                $full   = $board_json[$board0]['full'];
+                $raw    = ipmi_hex_tokens($board_json[$board0]['raw']);
+                $full   = ipmi_hex_tokens($board_json[$board0]['full']);
                 $cmd   .= "ipmi-raw $raw $full $fanopts 2>&1 >/dev/null &";
             }
             break;
         case "Supermicro":
             //if board is Supermicro
-            $full = $board_json[$board]['full'];
+            $full = ipmi_hex_tokens($board_json[$board]['full']);
             $cmd  = "ipmi-raw $full $fanopts 2>&1 >/dev/null &";
             break;
         case "Dell":
             //if board is Dell
-            $raw    = $board_json[$board]['raw'];
-            $full = $board_json[$board]['full'];
+            $raw    = ipmi_hex_tokens($board_json[$board]['raw']);
+            $full = ipmi_hex_tokens($board_json[$board]['full']);
             $cmd   = "ipmi-raw $full $fanopts 2>&1 >/dev/null &";
             break;
         case "Giga":
             //if board is Giga
-            $full = $board_json[$board]['full'];
+            $full = ipmi_hex_tokens($board_json[$board]['full']);
             $cmd  = "ipmi-raw $full $fanopts 2>&1 >/dev/null &";
             break;
     }
@@ -403,8 +404,12 @@ function get_highest_temp(){
             elseif(!empty($ua_devs)){
                 $ua_key = "/dev/".$hdd['device'];
                 $temp = (array_key_exists($ua_key, $ua_devs)) ? $ua_devs[$ua_key]['temp'] : 0;
-            }else
-                $temp = preg_replace("/\s+/", "", shell_exec("smartctl -A -n standby /dev/{$hdd} 2>/dev/null| grep -m 1 -i Temperature_Cel | awk '{print $10}'"));
+            }else{
+                $device = isset($hdd['device']) ? preg_replace('/[^A-Za-z0-9]/', '', (string)$hdd['device']) : '';
+                $temp = 0;
+                if ($device !== '')
+                    $temp = preg_replace("/\s+/", "", shell_exec('smartctl -A -n standby '.escapeshellarg('/dev/'.$device)." 2>/dev/null| grep -m 1 -i Temperature_Cel | awk '{print \$10}'"));
+            }
 
             $highest_temp = ($temp > $highest_temp) ? $temp : $highest_temp;
         }
@@ -661,7 +666,7 @@ while(TRUE){ while(TRUE){
 
     for($i = 0; $i <= $cmd_count; $i++){
         $board0 = ($i == 0) ? $board : $board.$i;
-        $raw    = $board_json[$board0]['raw'];
+        $raw    = ipmi_hex_tokens($board_json[$board0]['raw']);
         $fans   = $board_json[$board0]['fans'];
         $hex    = '';
         $msg    = 'Fan:Temp';
@@ -674,7 +679,7 @@ while(TRUE){ while(TRUE){
 
         foreach(configured_fan_groups($board0, $fans) as $group){
             $group_result = group_pwm($group, $sensors);
-            $pwm = $group_result['pwm'];
+            $pwm = ipmi_hex_tokens($group_result['pwm']);
             $pct = $group_result['pct'];
             $reading = $group_result['reading'];
             $name = $group_result['name'];
@@ -683,6 +688,7 @@ while(TRUE){ while(TRUE){
             $msg .= ", {$group['name']}({$pct_label}%):".str_replace('Temperature','Temp',$name)."($mytemp)";
 
             foreach($group['targets'] as $target_fan => $value){
+                $value = ipmi_hex_tokens($value);
                 switch($board) {
                 case "ASRock":
                 case "ASRockRack":
@@ -740,8 +746,8 @@ while(TRUE){ while(TRUE){
         }
         if($board === 'Supermicro'){
             foreach($pending_pwm_by_target as $target_key => $target_pwm){
-                $pwm = $target_pwm['pwm'];
-                $value = $target_pwm['value'];
+                $pwm = ipmi_hex_tokens($target_pwm['pwm']);
+                $value = ipmi_hex_tokens($target_pwm['value']);
                 if(!isset($current_pwm_by_target[$target_key]))
                     $current_pwm_by_target[$target_key] = '';
                 if($current_pwm_by_target[$target_key] !== $pwm && $pwm !== '00'){
@@ -755,7 +761,8 @@ while(TRUE){ while(TRUE){
             case "ASRock":
             case "ASRockRack":
             //compare last value to new value for Asrock boards
-            $cmd_str = "ipmi-raw $raw$hex $fanopts 2>&1; ";
+            $hex_args = ipmi_hex_tokens($hex);
+            $cmd_str = "ipmi-raw $raw $hex_args $fanopts 2>&1; ";
 
             if($i == 0){
 

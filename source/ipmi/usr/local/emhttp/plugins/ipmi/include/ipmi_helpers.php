@@ -3,7 +3,8 @@ require_once '/usr/local/emhttp/plugins/ipmi/include/ipmi_options.php';
 require_once '/usr/local/emhttp/plugins/ipmi/include/ipmi_drives.php';
 require_once '/usr/local/emhttp/plugins/dynamix/include/Helpers.php';
 
-$action = array_key_exists('action', $_GET) ? htmlspecialchars($_GET['action']) : '';
+$allowed_actions = ['ipmisensors', 'ipmievents', 'ipmiarch', 'ipmidash'];
+$action = (array_key_exists('action', $_GET) && in_array($_GET['action'], $allowed_actions, true)) ? $_GET['action'] : '';
 $hdd_temp = get_highest_temp();
 extract(parse_plugin_cfg('dynamix',true));
 if (isset($display['unit'])) $display_unit = $display['unit']; else $display_unit = "C";
@@ -192,16 +193,16 @@ function ipmi_get_options($selected=null){
     global $sensors;
     $options = "";
     foreach($sensors as $id => $sensor){
-        $name = $sensor['Name'];
+        $name = ipmi_h($sensor['Name']);
         $reading  = ($sensor['Type'] === 'OEM Reserved') ? $sensor['Event'] : $sensor['Reading'];
-        $ip       = (empty($sensor['IP'])) ? '' : " ({$sensor['IP']})";
-        $units    = is_numeric($reading) ? $sensor['Units'] : '';
-        $options .= "<option value='$id'";
+        $ip       = (empty($sensor['IP'])) ? '' : ' ('.ipmi_h($sensor['IP']).')';
+        $units    = is_numeric($reading) ? ipmi_h($sensor['Units']) : '';
+        $options .= "<option value='".ipmi_h($id)."'";
 
         // set saved option as selected
         if ($selected == $id)
             $options .= " selected";
-        if ($sensor['Type'] == "Temperature")  $options .= ">$name$ip - ".my_temp($reading)."</option>"; else $options .= ">$name$ip - $reading $units</option>" ;
+        if ($sensor['Type'] == "Temperature")  $options .= ">$name$ip - ".my_temp($reading)."</option>"; else $options .= ">$name$ip - ".ipmi_h($reading)." $units</option>" ;
     }
     return $options;
 }
@@ -219,14 +220,14 @@ function ipmi_get_enabled($ignore){
     foreach($allsensors as $sensor){
         $id       = $sensor['ID'];
         $reading  = $sensor['Reading'];
-        $units    = ($reading === 'N/A') ? '' : " {$sensor['Units']}";
-        $ip       = (empty($netopts))    ? '' : " {$sensor['IP']}";
-        $options .= "<option value='$id'";
+        $units    = ($reading === 'N/A') ? '' : ' '.ipmi_h($sensor['Units']);
+        $ip       = (empty($netopts))    ? '' : ' '.ipmi_h($sensor['IP']);
+        $options .= "<option value='".ipmi_h($id)."'";
 
         // search for id in array to not select ignored sensors
         $options .= array_key_exists($id, $ignored) ?  '' : " selected";
 
-        $options .= ">{$sensor['Name']}$ip - $reading$units</option>";
+        $options .= ">".ipmi_h($sensor['Name'])."$ip - ".ipmi_h($reading)."$units</option>";
 
     }
     return $options;
@@ -259,7 +260,7 @@ function ipmi_fan_sensors($ignore=null) {
     if(!($ipmi || !empty($fanopts)))
         return [];
 
-    $ignored = (empty($ignore)) ? '' : "-R $ignore";
+    $ignored = (empty($ignore)) ? '' : '-R '.escapeshellarg($ignore);
     $cmd = "/usr/sbin/ipmi-sensors --comma-separated-output --no-header-output --interpret-oem-data $fanopts $ignored 2>/dev/null";
     $return_var=null ;
     exec($cmd, $output, $return_var);
@@ -420,19 +421,19 @@ function get_fanctrl_options(){
                 $showspindown = ($fanenabled && isset($fancfg[$tempid]) && strval($fancfg[$tempid]) === '99' && intval(isset($fancfg[$temphdd]) ? $fancfg[$temphdd] : 0) > 0);
                 $spindownhide = $showspindown ? '' : ' style="display:none;"';
 
-                echo '<div class="fan-block" data-fan="',$name,'" data-enabled="', ($fanenabled ? '1' : '0'), '">';
+                echo '<div class="fan-block" data-fan="',ipmi_h($name),'" data-enabled="', ($fanenabled ? '1' : '0'), '">';
 
                 // hidden fan id
-                echo '<input type="hidden" name="FAN_',$name,'" value="',$id,'"/>';
+                echo '<input type="hidden" name="FAN_',ipmi_h($name),'" value="',ipmi_h($id),'"/>';
 
                 // fan name: reading => temp name: reading
-                echo '<dl><dt>',$display,' (',floatval($fan['Reading']),' ',$fan['Units'],'):</dt><dd><span class="fanctrl-basic">';
+                echo '<dl><dt>',$display,' (',floatval($fan['Reading']),' ',ipmi_h($fan['Units']),'):</dt><dd><span class="fanctrl-basic">';
                 if (!$fanenabled) {
                     echo 'Disabled';
                 } else {
                     if ($temp['Name']){
-                        echo $temp['Name'],' ('.my_temp(floatval($temp['Reading'])),' ','), ',
-                        $fancfg[$templo],'-',$fancfg[$temphi],'&deg;, ',number_format((intval(intval($fancfg[$fanmin])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmax])/$range*1000)/10),1),'%';
+                        echo ipmi_h($temp['Name']),' ('.my_temp(floatval($temp['Reading'])),' ','), ',
+                        ipmi_h($fancfg[$templo]),'-',ipmi_h($fancfg[$temphi]),'&deg;, ',number_format((intval(intval($fancfg[$fanmin])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmax])/$range*1000)/10),1),'%';
                     }else{
                         echo 'Auto';
                     }
@@ -441,16 +442,16 @@ function get_fanctrl_options(){
                 echo '</span><span class="fanctrl-settings" style="display:none;">';
                 if ($fanenabled) {
                     if ($temp['Name']){
-                        echo $temp['Name'],' ('.my_temp(floatval($temp['Reading'])),' ','), ',
-                        $fancfg[$templo],', ',$fancfg[$temphi],', ',number_format((intval(intval($fancfg[$fanmin])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmax])/$range*1000)/10),1),'%';
+                        echo ipmi_h($temp['Name']),' ('.my_temp(floatval($temp['Reading'])),' ','), ',
+                        ipmi_h($fancfg[$templo]),', ',ipmi_h($fancfg[$temphi]),', ',number_format((intval(intval($fancfg[$fanmin])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmax])/$range*1000)/10),1),'%';
                     }else{
                         echo 'Auto';
                     }
 
                     echo '&nbsp;&nbsp;&nbsp;&nbsp;Override:';
                     if (isset($temphddd['Name'])){
-                        echo $temphddd['Name'].' ('.my_temp(floatval($temp['Reading'])),' ','), ',
-                        $fancfg[$temploo],', ',$fancfg[$temphio],', ',number_format((intval(intval($fancfg[$fanmino])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmaxo])/$range*1000)/10),1),'%';
+                        echo ipmi_h($temphddd['Name']).' ('.my_temp(floatval($temp['Reading'])),' ','), ',
+                        ipmi_h($fancfg[$temploo]),', ',ipmi_h($fancfg[$temphio]),', ',number_format((intval(intval($fancfg[$fanmino])/$range*1000)/10),1),'-',number_format((intval(intval($fancfg[$fanmaxo])/$range*1000)/10),1),'%';
                     }else{
                         echo 'Not Defined';
                     }
@@ -584,8 +585,8 @@ function get_temp_options($selected=0){
     $options = '';
     foreach($fansensors as $id => $sensor){
         if (($sensor['Type'] === 'Temperature') || ($sensor['Name'] === 'HDD Temperature')){
-            $name = $sensor['Name'];
-            $options .= "<option value='$id'";
+            $name = ipmi_h($sensor['Name']);
+            $options .= "<option value='".ipmi_h($id)."'";
 
             // set saved option as selected
             if (intval($selected) === $id)
@@ -641,11 +642,11 @@ function get_fanip_options(){
     $ips = 'None,'.$ipaddr;
     $ips = explode(',',$ips);
         foreach($ips as $ip){
-            $options .= '<option value="'.$ip.'"';
+            $options .= '<option value="'.ipmi_h($ip).'"';
             if($fanip === $ip)
                 $options .= ' selected';
 
-            $options .= '>'.$ip.'</option>';
+            $options .= '>'.ipmi_h($ip).'</option>';
         }
     echo $options;
 }
@@ -655,12 +656,12 @@ function get_hdd_options($ignore=null) {
     $ignored = array_flip(explode(',', $ignore));
     $options = "";
     foreach ($hdds as $serial => $hdd) {
-        $options .= "<option value='$serial'";
+        $options .= "<option value='".ipmi_h($serial)."'";
 
         // search for id in array to not select ignored sensors
         $options .= array_key_exists($serial, $ignored) ?  '' : " selected";
 
-        $options .= ">$serial ($hdd)</option>";
+        $options .= ">".ipmi_h($serial)." (".ipmi_h($hdd).")</option>";
 
     }
     return $options;
@@ -672,10 +673,10 @@ function get_hdd_options_for_fan($selected=null) {
     $selected_drives = ($selected === '') ? [] : array_flip(array_filter(explode(',', $selected)));
     $options = "";
     foreach ($hdds as $serial => $hdd) {
-        $options .= "<option value='$serial'";
+        $options .= "<option value='".ipmi_h($serial)."'";
         if ($selected === '' || array_key_exists($serial, $selected_drives))
             $options .= " selected";
-        $options .= ">$serial ($hdd)</option>";
+        $options .= ">".ipmi_h($serial)." (".ipmi_h($hdd).")</option>";
     }
     return $options;
 }

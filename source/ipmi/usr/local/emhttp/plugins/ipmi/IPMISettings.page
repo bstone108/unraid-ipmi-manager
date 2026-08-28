@@ -20,7 +20,7 @@ Tag="cog"
 <input type="hidden" name="#file" value="ipmi/ipmi.cfg" />
 
 Motherboard and Model:
-: <span><?=$board." ".$board_model." ".$sm_gen?></span>
+: <span><?=ipmi_h($board." ".$board_model." ".$sm_gen)?></span>
 
 Enable Network Connection(s):
 : <select id="NETWORK" class="ipmi-run" name="NETWORK" size="1"  title="Enable connection to network based ipmi, not necessary for local onboard ipmi">

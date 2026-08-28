@@ -51,6 +51,7 @@ $mytiles[$pluginname]['column2'] =
 EOT;
 ?>
 
+<script src="<?=autov('/plugins/ipmi/js/ipmi-escape.js');?>"></script>
 <script>
 
 </script>
@@ -126,7 +127,7 @@ function sensorArray(Refresh){
                     Units += '&deg;';
 
                 }
-                Units += sensor.Units;
+                Units += ipmiEscapeHtml(sensor.Units);
             }else {
                 Color = 'blue'; // reading equals N/A
                 if(sensor.Type == 'OEM Reserved'){
@@ -143,14 +144,14 @@ function sensorArray(Refresh){
             }
 
             if(Refresh) {
-                $('#'+i).html('<font color="'+ Color + '">'+ Reading + Units +'</font>');
+                $('#'+i).html('<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font>');
             } else {
 
             $('#tblIPMIDash')
             .append("<tr><td>"+
-            '<span class="w18"><i class="fa fa-circle orb '+ data.State[sensor.State] +'-orb middle"></i></span>'+ //state
-            '<span class="w36">'+sensor.Name+'</span>'+ //sensor name
-            '<span id="'+i+'" class="w36 reading">'+ '<font color="'+ Color + '">'+ Reading + Units +'</font></span>'+ //sensor reading
+            '<span class="w18"><i class="fa fa-circle orb '+ ipmiEscapeHtml(data.State[sensor.State]) +'-orb middle"></i></span>'+ //state
+            '<span class="w36">'+ipmiEscapeHtml(sensor.Name)+'</span>'+ //sensor name
+            '<span id="'+ipmiEscapeHtml(i)+'" class="w36 reading">'+ '<font color="'+ ipmiEscapeHtml(Color) + '">'+ ipmiEscapeHtml(Reading) + Units +'</font></span>'+ //sensor reading
             '</td></tr>').hideMe();
             }
         });

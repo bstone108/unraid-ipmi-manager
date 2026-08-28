@@ -11,8 +11,8 @@ $dash     = isset($cfg['DASH'])     ? htmlspecialchars($cfg['DASH'])     : 'disa
 $loadcfg  = isset($cfg['LOADCFG'])  ? $cfg['LOADCFG']                    : 'disable';
 
 // check running status
-$seld_run       = (intval(trim(shell_exec( "[ -f /proc/`cat /var/run/ipmiseld.pid 2> /dev/null`/exe ] && echo 1 || echo 0 2> /dev/null" ))) === 1);
-$fanctrl_run    = (intval(trim(shell_exec( "[ -f /proc/`cat /var/run/ipmifan.pid 2> /dev/null`/exe ] && echo 1 || echo 0 2> /dev/null" ))) === 1);
+$seld_run       = ipmi_pid_running('/var/run/ipmiseld.pid');
+$fanctrl_run    = ipmi_pid_running('/var/run/ipmifan.pid');
 $running        = "<span class='green'>Running</span>";
 $stopped        = "<span class='orange'>Stopped</span>";
 $seld_status    = ($seld_run)    ? $running : $stopped;

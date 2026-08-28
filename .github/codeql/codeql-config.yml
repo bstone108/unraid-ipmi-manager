@@ -1,0 +1,5 @@
+name: unraid-ipmi-manager
+paths-ignore:
+  - archive/**
+  - packages/**
+  - "**/*.min.js"

@@ -43,7 +43,40 @@ if(isset($_POST['config']) && $_POST['config'] == "2") {
     $commit     = array_key_exists('commit', $_POST);
     $config = (array_key_exists('ipmicfg', $_POST)) ? str_replace("\r", '', $_POST['ipmicfg']) : '';
     if ($commit) {
-        if (file_put_contents($config_file, $config) === false ) {
+        $decoded = json_decode($config, true);
+        $invalid = !is_array($decoded);
+        if (!$invalid) {
+            foreach ($decoded as $board_data) {
+                if (!is_array($board_data)) {
+                    $invalid = true;
+                    break;
+                }
+                foreach (['raw', 'auto', 'full', 'manual'] as $field) {
+                    if (!isset($board_data[$field]))
+                        continue;
+                    $token = trim((string)$board_data[$field]);
+                    if ($token !== '' && ipmi_hex_tokens($token) === '') {
+                        $invalid = true;
+                        break 2;
+                    }
+                }
+                if (isset($board_data['fans']) && is_array($board_data['fans'])) {
+                    foreach ($board_data['fans'] as $fan_target) {
+                        $token = trim((string)$fan_target);
+                        if ($token !== '' && ipmi_hex_tokens($token) === '') {
+                            $invalid = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+        if ($invalid) {
+            $return = [
+                'error' => 'Invalid board configuration',
+                'success' => false];
+            $return_var = true;
+        } elseif (file_put_contents($config_file, $config) === false ) {
             $return = [
                 'error' => $output,
                 'success' => false];

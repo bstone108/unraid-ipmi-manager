@@ -45,6 +45,7 @@ Markdown="false"
     </blockquote>
 </div>
 
+<script src="<?=autov('/plugins/ipmi/js/ipmi-escape.js');?>"></script>
 <script>
 $(function(){
     $('#tblArchive').tablesorter({
@@ -100,13 +101,13 @@ function archiveArray(){
         $.each(data.Archives, function (i, archive) {
             var Host = (typeof archive.IP == 'undefined') ? '' : archive.IP; // check if network was connection used
             $('#tblArchive tbody')
-            .append('<tr id="'+i+'">'+
-            '<td title="'+ archive.State +'"><img src="/plugins/dynamix/images/'+ data.State[archive.State] +'-on.png"/></td>'+ //state
-            '<td class="network">'+ Host +'</td>'+ //archive host ip address
-            '<td>'+ archive.Date  +'</td>'+ //time stamp
-            '<td>'+ archive.Name  +'</td>'+ //sensor name
-            '<td>'+ archive.Type  +'</td>'+ //archive type
-            '<td>'+ archive.Event +'</td>'+ //archive description
+            .append('<tr id="'+ipmiEscapeHtml(i)+'">'+
+            '<td title="'+ ipmiEscapeHtml(archive.State) +'"><img src="/plugins/dynamix/images/'+ ipmiEscapeHtml(data.State[archive.State]) +'-on.png"/></td>'+ //state
+            '<td class="network">'+ ipmiEscapeHtml(Host) +'</td>'+ //archive host ip address
+            '<td>'+ ipmiEscapeHtml(archive.Date)  +'</td>'+ //time stamp
+            '<td>'+ ipmiEscapeHtml(archive.Name)  +'</td>'+ //sensor name
+            '<td>'+ ipmiEscapeHtml(archive.Type)  +'</td>'+ //archive type
+            '<td>'+ ipmiEscapeHtml(archive.Event) +'</td>'+ //archive description
             '<td></td>'+
             '</tr>');
         });

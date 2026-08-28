@@ -47,6 +47,7 @@ Markdown="false"
     </blockquote>
 </div>
 <script src="<?=autov('/plugins/ipmi/js/parser-network.min.js');?>"></script>
+<script src="<?=autov('/plugins/ipmi/js/ipmi-escape.js');?>"></script>
 
 <script>
 $(function(){
@@ -119,14 +120,14 @@ function eventArray(){
         $.each(data.Events, function (i, event) {
             var Host = (typeof event.IP === 'undefined') ? '' : event.IP; // check if network connection was used
             $('#tblEvent tbody')
-            .append('<tr id="'+i+'">'+
-            '<td title="'+ event.State +'"><i class="fa fa-circle orb '+ data.State[event.State] +'-orb middle"></td>'+ //state
-            '<td class="network">'+ Host +'</td>'+ //event host ip address
-            '<td>'+ event.ID    +'</td>'+ //event id
-            '<td>'+ event.Date  +'</td>'+ //time stamp
-            '<td>'+ event.Name  +'</td>'+ //sensor name
-            '<td>'+ event.Type  +'</td>'+ //event type
-            '<td>'+ event.Event +'</td>'+ //event description
+            .append('<tr id="'+ipmiEscapeHtml(i)+'">'+
+            '<td title="'+ ipmiEscapeHtml(event.State) +'"><i class="fa fa-circle orb '+ ipmiEscapeHtml(data.State[event.State]) +'-orb middle"></td>'+ //state
+            '<td class="network">'+ ipmiEscapeHtml(Host) +'</td>'+ //event host ip address
+            '<td>'+ ipmiEscapeHtml(event.ID)    +'</td>'+ //event id
+            '<td>'+ ipmiEscapeHtml(event.Date)  +'</td>'+ //time stamp
+            '<td>'+ ipmiEscapeHtml(event.Name)  +'</td>'+ //sensor name
+            '<td>'+ ipmiEscapeHtml(event.Type)  +'</td>'+ //event type
+            '<td>'+ ipmiEscapeHtml(event.Event) +'</td>'+ //event description
             '<td><a class="delete"><i class="fa fa-trash" title="delete"></i></a></td>'+ //delete icon
             '</tr>');
         });
