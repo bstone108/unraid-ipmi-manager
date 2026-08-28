@@ -3,7 +3,7 @@ require_once '/usr/local/emhttp/plugins/ipmi/include/ipmi_options.php';
 
 $cmd     = '/usr/sbin/ipmi-sel --comma-separated-output --output-event-state --no-header-output --interpret-oem-data ';
 $log     = '/boot/config/plugins/ipmi/archived_events.log';
-$event   = htmlspecialchars($_GET['event']);
+$event   = isset($_GET['event']) ? (string)$_GET['event'] : '';
 $archive = intval($_GET['archive']);
 
 /* network options */
@@ -11,7 +11,7 @@ if($netsvc === 'enable') {
     if($event){
         $id = explode('_', $event);
         $event = $id[1];
-        $options = ' -h '.escapeshellarg(long2ip($id[0]));
+        $options = ' -h '.escapeshellarg(long2ip(intval($id[0])));
     }else
         $options = ' -h '.escapeshellarg($ipaddr);
 
